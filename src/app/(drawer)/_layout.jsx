@@ -1,25 +1,35 @@
 import { Drawer } from "expo-router/drawer";
+import CustomDrawer from "../components/CustomDrawer";
 
 export default function Layout() {
   return (
-    <Drawer headerMode="screen" screenOptions={{ headerShown: false }}>
-      
+    <Drawer
+      drawerContent={(props) => <CustomDrawer {...props} />}
+      screenOptions={{
+        headerShown: false,
+        drawerType: "front",
+        swipeEnabled: true,
+        overlayColor: "rgba(0,0,0,0.7)",
+        sceneStyle: {
+          backgroundColor: "#080D1B",
+        },
+      }}
+    >
       <Drawer.Screen
-        name="Home" 
+        name="Home"
         options={{
           drawerLabel: "Home",
-          title: "overview",
+          title: "Home",
         }}
       />
 
-      {/* <Drawer.Screen
-        name="user/[id]" 
+      <Drawer.Screen
+        name="Playwithfriends"
         options={{
-          drawerLabel: "User",
-          title: "overview",
+          drawerLabel: "Play with Friends",
+          title: "Play with Friends",
         }}
-      /> */}
-      
+      />
     </Drawer>
   );
 }
