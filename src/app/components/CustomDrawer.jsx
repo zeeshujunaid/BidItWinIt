@@ -12,7 +12,7 @@ import { useRouter, usePathname } from "expo-router";
 const MENU_ITEMS = [
   { label: "Home", icon: "⌂", path: "/Home" },
   { label: "Play with Friends", icon: "♟", path: "/Playwithfriends" },
-  { label: "Online Play", icon: "⚡", path: null },
+  { label: "Online Play", icon: "⚡", path: "/Onlineplay" },
   { label: "Leaderboard", icon: "🏆", path: null },
   { label: "Settings", icon: "⚙", path: null },
 ];

@@ -30,6 +30,14 @@ export default function Layout() {
           title: "Play with Friends",
         }}
       />
+
+      <Drawer.Screen
+        name="Onlineplay"
+        options={{
+          drawerLabel: "Online Play",
+          title: "Online Play",
+        }}
+      />
     </Drawer>
   );
 }

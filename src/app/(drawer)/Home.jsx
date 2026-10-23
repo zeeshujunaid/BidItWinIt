@@ -7,15 +7,17 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import Header from "../components/Header";
 
 export default function Home() {
+  const Router = useRouter();
   const handleFriends = () => {
-    console.log("Play with Friends pressed");
+    Router.replace("/Playwithfriends");
   };
 
   const handleOnline = () => {
-    console.log("Online Play pressed");
+    Router.replace("/Onlineplay");
   };
 
   return (
