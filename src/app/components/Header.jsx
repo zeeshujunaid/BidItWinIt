@@ -1,20 +1,47 @@
-import React from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import PicChanger from "./PicChanger";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function Header() {
+  const [user, setUser] = useState(null);
+
   const handleMenuPress = () => {
-    console.log("Menu pressed");
-    // Actual drawer navigation baad mein connect karenge
+    // Hamburger menu logic yahan add karenge
   };
+
+  useEffect(() => {
+    const getUserData = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem("user");
+
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.log("Error getting user:", error);
+      }
+    };
+
+    getUserData();
+  }, []);
 
   return (
     <View style={styles.header}>
-      {/* Background glow */}
       <View style={styles.glow} />
       <View style={styles.bottomGlow} />
 
-      {/* LEFT SIDE: Hamburger + Logo + Player details */}
+      {/* LEFT SIDE */}
       <View style={styles.leftSection}>
         <TouchableOpacity
           style={styles.menuButton}
@@ -38,23 +65,23 @@ export default function Header() {
           <Text style={styles.welcomeText}>WELCOME BACK</Text>
 
           <Text style={styles.playerName} numberOfLines={1}>
-            Zeeshan Junaid
+            {user?.name || "Player"}
           </Text>
 
           <View style={styles.uidBadge}>
-            <Text style={styles.uidLabel}>UID</Text>
-            <Text style={styles.uidText}>#829104</Text>
+            <Text style={styles.uidLabel}>ID</Text>
+            <Text style={styles.uidText}>#{user?.playerId ?? "------"}</Text>
           </View>
         </View>
       </View>
 
-      {/* CENTER: Character */}
+      {/* CENTER CHARACTER */}
       <View style={styles.characterContainer}>
         <View style={styles.characterGlow} />
-        <PicChanger/>
+        <PicChanger />
       </View>
 
-      {/* RIGHT SIDE: Coins */}
+      {/* RIGHT SIDE: COINS */}
       <View style={styles.rightSection}>
         <View style={styles.coinCard}>
           <View style={styles.coinIcon}>
@@ -63,12 +90,13 @@ export default function Header() {
 
           <View style={styles.coinInfo}>
             <Text style={styles.coinLabel}>YOUR COINS</Text>
-            <Text style={styles.coinAmount}>2,450</Text>
+            <Text style={styles.coinAmount}>
+              {Number(user?.coins ?? 0).toLocaleString("en-US")}
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* Bottom separator */}
       <View style={styles.bottomBorder} />
     </View>
   );

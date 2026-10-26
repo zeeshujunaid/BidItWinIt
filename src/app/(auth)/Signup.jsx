@@ -11,189 +11,253 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import Toast from "react-native-toast-message";
 import { useRouter } from "expo-router";
+import Loader from "../components/Loader";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, firestore } from "../utils/Firebase";
+import asyncStorage from "@react-native-async-storage/async-storage";
 
 export default function Signup() {
   const router = useRouter();
-
+  const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const playerId = Math.floor(100000 + Math.random() * 900000);
+
+  const HandleSignup = async () => {
+    setLoading(true);
+    if (
+      password !== confirmPassword ||
+      name.trim() === "" ||
+      email.trim() === "" ||
+      password.trim() === ""
+    ) {
+      Toast.show({
+        type: "error",
+        text1: "Please fill in all fields and ensure passwords match",
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password,
+      );
+
+      const user = userCredential.user;
+
+      const startingCoins = 10000;
+      await setDoc(doc(firestore, "users", user.uid), {
+        uid: user.uid,
+        name: name.trim(),
+        email: email.trim(),
+        coins: startingCoins,
+        createdAt: Date.now(),
+        playerId: playerId,
+      });
+
+     const userData = {
+       uid: user.uid,
+       name: name.trim(),
+       email: email.trim(),
+       coins: startingCoins,
+       playerId: playerId,
+     };
+
+     await asyncStorage.setItem("user", JSON.stringify(userData));
+
+      Toast.show({
+        type: "success",
+        text1: "Account Created!",
+        text2: `${startingCoins} coins added to your account.`,
+      });
+
+      router.replace("/(drawer)/Home");
+    } catch (error) {
+      console.log("Signup error:", error);
+      setLoading(false);
+
+      Toast.show({
+        type: "error",
+        text1: "Signup Failed",
+        text2: error.message,
+      });
+    }
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <StatusBar hidden />
-
-      {/* Background glow */}
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <Image
-            source={require("../../../assets/images/textlogo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        {loading && <Loader />}
 
-        {/* Heading */}
-        <View style={styles.headingContainer}>
-          <Text style={styles.heading}>
-            Create <Text style={styles.headingBlue}>Account</Text>
-          </Text>
+        <StatusBar hidden />
 
-          <Text style={styles.subtitle}>
-            Join the game. Make every bid count.
-          </Text>
-        </View>
+        {/* Background glow */}
+        <View style={styles.glowTop} />
+        <View style={styles.glowBottom} />
 
-        {/* Form */}
-        <View style={styles.form}>
-          {/* Name */}
-          <Text style={styles.label}>FULL NAME</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>♙</Text>
-
-            <TextInput
-              placeholder="Enter your full name"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              autoCorrect={false}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <Image
+              source={require("../../../assets/images/textlogo.png")}
+              style={styles.logo}
+              resizeMode="contain"
             />
           </View>
 
-          {/* Email */}
-          <Text style={styles.label}>EMAIL ADDRESS</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>✉</Text>
-
-            <TextInput
-              placeholder="Enter your email"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Password */}
-          <Text style={styles.label}>PASSWORD</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>⌑</Text>
-
-            <TextInput
-              placeholder="Create a password"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-            />
-
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.showButton}
-            >
-              <Text style={styles.showText}>
-                {showPassword ? "HIDE" : "SHOW"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Confirm Password */}
-          <Text style={styles.label}>CONFIRM PASSWORD</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>⌑</Text>
-
-            <TextInput
-              placeholder="Re-enter your password"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry={!showConfirmPassword}
-              autoCapitalize="none"
-            />
-
-            <TouchableOpacity
-              onPress={() =>
-                setShowConfirmPassword(!showConfirmPassword)
-              }
-              style={styles.showButton}
-            >
-              <Text style={styles.showText}>
-                {showConfirmPassword ? "HIDE" : "SHOW"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Signup button */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.signupButton}
-            onPress={() => {
-              // Connect signup validation and authentication here.
-              router.push("/(drawer)/Home");
-            }}
-          >
-            <Text style={styles.signupButtonText}>
-              CREATE ACCOUNT
+          {/* Heading */}
+          <View style={styles.headingContainer}>
+            <Text style={styles.heading}>
+              Create <Text style={styles.headingBlue}>Account</Text>
             </Text>
 
-            <Text style={styles.arrow}>→</Text>
-          </TouchableOpacity>
+            <Text style={styles.subtitle}>
+              Join the game. Make every bid count.
+            </Text>
+          </View>
 
-          {/* Login link */}
-          <View style={styles.loginContainer}>
-            <Text style={styles.loginText}>
-              Already have an account?{" "}
+          {/* Form */}
+          <View style={styles.form}>
+            {/* Name */}
+            <Text style={styles.label}>FULL NAME</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>♙</Text>
+
+              <TextInput
+                placeholder="Enter your full name"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Email */}
+            <Text style={styles.label}>EMAIL ADDRESS</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>✉</Text>
+
+              <TextInput
+                placeholder="Enter your email"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Password */}
+            <Text style={styles.label}>PASSWORD</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>⌑</Text>
+
+              <TextInput
+                placeholder="Create a password"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showText}>
+                  {showPassword ? "HIDE" : "SHOW"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Confirm Password */}
+            <Text style={styles.label}>CONFIRM PASSWORD</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>⌑</Text>
+
+              <TextInput
+                placeholder="Re-enter your password"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showText}>
+                  {showConfirmPassword ? "HIDE" : "SHOW"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Signup button */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.signupButton}
+              onPress={HandleSignup}
+            >
+              <Text style={styles.signupButtonText}>CREATE ACCOUNT</Text>
+
+              <Text style={styles.arrow}>→</Text>
+            </TouchableOpacity>
+
+            {/* Login link */}
+            <View style={styles.loginContainer}>
+              <Text style={styles.loginText}>Already have an account? </Text>
+
+              <TouchableOpacity onPress={() => router.push("/(auth)/Login")}>
+                <Text style={styles.loginLink}>Log in</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <View style={styles.footerLine} />
+
+            <Text style={styles.footerText}>
+              THINK FAST. BID SMART. WIN BIG.
             </Text>
 
-            <TouchableOpacity
-              onPress={() => router.push("/(auth)/Login")}
-            >
-              <Text style={styles.loginLink}>Log in</Text>
-            </TouchableOpacity>
+            <View style={styles.footerLine} />
           </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.footerLine} />
-
-          <Text style={styles.footerText}>
-            THINK FAST. BID SMART. WIN BIG.
-          </Text>
-
-          <View style={styles.footerLine} />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -228,7 +292,7 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: "#7C3AED",
-    opacity: 0.10,
+    opacity: 0.1,
     bottom: -120,
     left: -120,
   },
@@ -384,4 +448,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
 });
-;

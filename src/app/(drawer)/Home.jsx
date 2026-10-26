@@ -28,6 +28,10 @@ export default function Home() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
+        {/* Background glow */}
+        <View style={styles.glow} />
+        <View style={styles.bottomGlow} />
+
         {/* Heading */}
         <View style={styles.heading}>
           <Text style={styles.eyebrow}>READY TO PLAY?</Text>
@@ -114,6 +118,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#080D1B",
+  },
+
+  glow: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#164EAD",
+    opacity: 0.17,
+    top: -120,
+    left: 30,
+  },
+
+  bottomGlow: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "#7C3AED",
+    opacity: 0.12,
+    bottom: -125,
+    left: "35%",
   },
 
   content: {
