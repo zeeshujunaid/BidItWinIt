@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Image,
   ScrollView,
@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { useRouter, usePathname } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 
 const MENU_ITEMS = [
   { label: "Home", icon: "⌂", path: "/Home" },
@@ -18,8 +20,28 @@ const MENU_ITEMS = [
 ];
 
 export default function CustomDrawer(props) {
+  const [user, setUser] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    const getUserData = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem("user");
+
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.log("Error getting user:", error);
+      }
+    };
+
+    getUserData();
+  }, []);
 
   const go = (path) => {
     props.navigation.closeDrawer();
@@ -55,8 +77,8 @@ export default function CustomDrawer(props) {
 
           <View style={styles.profileInfo}>
             <Text style={styles.welcome}>WELCOME BACK</Text>
-            <Text style={styles.playerName}>Zeeshan Junaid</Text>
-            <Text style={styles.uid}>UID #829104</Text>
+            <Text style={styles.playerName}> {user?.name || "Player"}</Text>
+            <Text style={styles.uid}>#{user?.playerId ?? "------"}</Text>
           </View>
         </View>
 
@@ -66,7 +88,9 @@ export default function CustomDrawer(props) {
 
           <View style={styles.coinInfo}>
             <Text style={styles.coinLabel}>YOUR BALANCE</Text>
-            <Text style={styles.coinAmount}>2,450 Coins</Text>
+            <Text style={styles.coinAmount}>
+              {Number(user?.coins ?? 0).toLocaleString("en-US")} Coins
+            </Text>
           </View>
 
           <Text style={styles.plus}>+</Text>

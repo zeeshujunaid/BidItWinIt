@@ -12,18 +12,113 @@ import {
   StyleSheet,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Toast from "react-native-toast-message";
+import Loader from "../components/Loader";
+import { auth, firestore } from "../utils/Firebase";
 
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password) {
+      Toast.show({
+        type: "error",
+        text1: "Missing Fields",
+        text2: "Please enter your email and password.",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Step 1: Login with Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password,
+      );
+
+      const firebaseUser = userCredential.user;
+
+      // Step 2: Get player profile from Firestore
+      const userRef = doc(firestore, "users", firebaseUser.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        Toast.show({
+          type: "error",
+          text1: "Profile Not Found",
+          text2: "Your account exists, but your player profile is missing.",
+        });
+        return;
+      }
+
+      const profile = userSnap.data();
+
+      // Step 3: Save only the data needed by the app
+      const userData = {
+        uid: firebaseUser.uid,
+        name: profile.name,
+        email: firebaseUser.email,
+        playerId: profile.playerId,
+        coins: profile.coins,
+      };
+
+      await AsyncStorage.setItem("user", JSON.stringify(userData));
+
+      // Step 4: Show success and navigate to Home
+      Toast.show({
+        type: "success",
+        text1: "Login Successful!",
+        text2: `Welcome back, ${profile.name}!`,
+      });
+
+      router.replace("/(drawer)/Home");
+    } catch (error) {
+      console.log("Login error:", error.code, error.message);
+
+      let message = "Something went wrong. Please try again.";
+
+      if (
+        error.code === "auth/invalid-credential" ||
+        error.code === "auth/wrong-password" ||
+        error.code === "auth/user-not-found"
+      ) {
+        message = "Invalid email or password.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "Please enter a valid email address.";
+      } else if (error.code === "auth/too-many-requests") {
+        message = "Too many attempts. Please try again later.";
+      } else if (error.code === "auth/network-request-failed") {
+        message = "Network error. Check your internet connection.";
+      }
+
+      Toast.show({
+        type: "error",
+        text1: "Login Failed",
+        text2: message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
+    <View style={{flex: 1}}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+    {loading && <Loader />}
+      
       <StatusBar hidden />
 
       <View style={styles.glowTop} />
@@ -49,9 +144,7 @@ export default function Login() {
             Welcome <Text style={styles.headingBlue}>Back!</Text>
           </Text>
 
-          <Text style={styles.subtitle}>
-            Log in and get back in the game.
-          </Text>
+          <Text style={styles.subtitle}>Log in and get back in the game.</Text>
         </View>
 
         {/* Login form */}
@@ -73,9 +166,7 @@ export default function Login() {
             />
           </View>
 
-          <Text style={[styles.label, { marginTop: 22 }]}>
-            PASSWORD
-          </Text>
+          <Text style={[styles.label, { marginTop: 22 }]}>PASSWORD</Text>
 
           <View style={styles.inputContainer}>
             <Text style={styles.inputIcon}>⌑</Text>
@@ -103,36 +194,30 @@ export default function Login() {
           {/* Forgot password */}
           <TouchableOpacity
             style={styles.forgotButton}
-            onPress={() =>
-              router.push("/(auth)/ForgotPassword")
-            }
+            onPress={() => router.push("/(auth)/ForgotPassword")}
           >
-            <Text style={styles.forgotText}>
-              Forgot password?
-            </Text>
+            <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
           {/* Login button */}
           <TouchableOpacity
             activeOpacity={0.8}
-            style={styles.loginButton}
-            onPress={() => {
-              // Connect your authentication here
-            }}
+            style={[styles.loginButton, loading && { opacity: 0.7 }]}
+            onPress={handleLogin}
+            disabled={loading}
           >
-            <Text style={styles.loginButtonText}>LOG IN</Text>
-            <Text style={styles.arrow}>→</Text>
+            <Text style={styles.loginButtonText}>
+              LOGIN
+            </Text>
+
+            {!loading && <Text style={styles.arrow}>→</Text>}
           </TouchableOpacity>
 
           {/* Signup link */}
           <View style={styles.signupContainer}>
-            <Text style={styles.signupText}>
-              New to BidItWinIt?{" "}
-            </Text>
+            <Text style={styles.signupText}>New to BidItWinIt? </Text>
 
-            <TouchableOpacity
-              onPress={() => router.push("/(auth)/Signup")}
-            >
+            <TouchableOpacity onPress={() => router.push("/(auth)/Signup")}>
               <Text style={styles.signupLink}>Create account</Text>
             </TouchableOpacity>
           </View>
@@ -141,13 +226,12 @@ export default function Login() {
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.footerLine} />
-          <Text style={styles.footerText}>
-            THINK FAST. BID SMART. WIN BIG.
-          </Text>
+          <Text style={styles.footerText}>THINK FAST. BID SMART. WIN BIG.</Text>
           <View style={styles.footerLine} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </View>
   );
 }
 
