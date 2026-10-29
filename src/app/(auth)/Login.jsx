@@ -39,7 +39,6 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Step 1: Login with Firebase Authentication
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email.trim(),
@@ -48,7 +47,6 @@ export default function Login() {
 
       const firebaseUser = userCredential.user;
 
-      // Step 2: Get player profile from Firestore
       const userRef = doc(firestore, "users", firebaseUser.uid);
       const userSnap = await getDoc(userRef);
 
@@ -63,7 +61,6 @@ export default function Login() {
 
       const profile = userSnap.data();
 
-      // Step 3: Save only the data needed by the app
       const userData = {
         uid: firebaseUser.uid,
         name: profile.name,
@@ -74,7 +71,6 @@ export default function Login() {
 
       await AsyncStorage.setItem("user", JSON.stringify(userData));
 
-      // Step 4: Show success and navigate to Home
       Toast.show({
         type: "success",
         text1: "Login Successful!",
