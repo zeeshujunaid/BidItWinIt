@@ -5,48 +5,217 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { ref, onValue } from "firebase/database";
-import { db } from "./utils/Firebase";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { ref, onValue, remove, runTransaction } from "firebase/database";
+import { doc, updateDoc } from "firebase/firestore";
+
+import { db, firestore } from "./utils/Firebase";
 
 export default function Room() {
   const { roomId } = useLocalSearchParams();
-
+  const [currentUserId, setCurrentUserId] = useState("");
+  const router = useRouter();
+  const [hostId, setHostId] = useState("");
+  const [roomStatus, setRoomStatus] = useState("waiting");
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [leaving, setLeaving] = useState(false);
+
 
   useEffect(() => {
-    if (!roomId) {
-      setLoading(false);
+    const loadUser = async () => {
+      const savedUser = await AsyncStorage.getItem("user");
+
+      if (savedUser) {
+        const user = JSON.parse(savedUser);
+        setCurrentUserId(user.uid);
+      }
+    };
+
+    loadUser();
+  }, []);
+  const handleStartGame = async () => {
+    if (players.length < 2) {
+      Alert.alert(
+        "Not Enough Players",
+        "Game start karne ke liye kam az kam 2 players chahiye.",
+      );
       return;
     }
 
-    const playersRef = ref(db, `Rooms/${roomId}/players`);
+    try {
+      const roomRef = ref(db, `Rooms/${roomId}`);
 
-    const unsubscribe = onValue(
-      playersRef,
-      (snapshot) => {
-        const data = snapshot.val() || {};
+      const result = await runTransaction(roomRef, (room) => {
+        if (!room || room.hostId !== currentUserId) {
+          return;
+        }
 
-        const playerList = Object.entries(data)
-          .map(([uid, player]) => ({
-            ...player,
-            uid,
-          }))
-          .sort((a, b) => a.seatIndex - b.seatIndex);
+        if (room.status !== "waiting") {
+          return;
+        }
 
-        setPlayers(playerList);
-        setLoading(false);
+        if (Object.keys(room.players || {}).length < 2) {
+          return;
+        }
+
+        return {
+          ...room,
+          status: "playing",
+        };
+      });
+
+      if (!result.committed) {
+        Alert.alert("Unable to Start", "Room start nahi ho saka.");
+      }
+    } catch (error) {
+      console.log("Start game error:", error);
+      Alert.alert("Error", error.message);
+    }
+  };
+
+useEffect(() => {
+  if (!roomId) {
+    setLoading(false);
+    return;
+  }
+
+  const roomRef = ref(db, `Rooms/${roomId}`);
+
+  const unsubscribe = onValue(
+    roomRef,
+    (snapshot) => {
+      const room = snapshot.val() || {};
+      const data = room.players || {};
+
+      const playerList = Object.entries(data)
+        .map(([uid, player]) => ({
+          ...player,
+          uid,
+        }))
+        .sort((a, b) => a.seatIndex - b.seatIndex);
+
+      setPlayers(playerList);
+      setHostId(room.hostId || "");
+      setRoomStatus(room.status || "waiting");
+      setLoading(false);
+    },
+    (error) => {
+      console.log("Room error:", error);
+      setLoading(false);
+    },
+  );
+
+  return unsubscribe;
+}, [roomId]);
+
+  // Leave Room
+  const handleLeaveRoom = async () => {
+    if (leaving) return;
+
+    Alert.alert("Leave Room", "Are you sure you want to leave this room?", [
+      {
+        text: "Cancel",
+        style: "cancel",
       },
-      (error) => {
-        console.log("Players load error:", error);
-        setLoading(false);
-      },
-    );
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          setLeaving(true);
 
-    return unsubscribe;
-  }, [roomId]);
+          try {
+            const savedUser = await AsyncStorage.getItem("user");
+
+            if (!savedUser) {
+              throw new Error("User information not found.");
+            }
+
+            const user = JSON.parse(savedUser);
+
+            if (!user.uid) {
+              throw new Error("User UID not found.");
+            }
+
+            // Update room atomically
+            const roomRef = ref(db, `Rooms/${roomId}`);
+
+            const result = await runTransaction(roomRef, (room) => {
+              if (!room || !room.players) return;
+
+              const players = { ...room.players };
+
+              // Remove leaving player
+              delete players[user.uid];
+
+              const remainingPlayers = Object.values(players);
+
+              // If no players are left
+              if (remainingPlayers.length === 0) {
+                room.hostId = "";
+                room.status = "waiting";
+                delete room.players;
+
+                return room;
+              }
+
+              // Check whether current host is still in the room
+              const hostStillExists = players[room.hostId];
+
+              if (!hostStillExists) {
+                // Assign host to next available player
+                const nextHost = remainingPlayers.sort(
+                  (a, b) => a.seatIndex - b.seatIndex,
+                )[0];
+
+                room.hostId = nextHost.uid;
+              }
+
+              room.players = players;
+
+              return room;
+            });
+
+            if (!result.committed) {
+              throw new Error("Could not update room.");
+            }
+
+            // Reset activeRoom in Firestore
+            await updateDoc(doc(firestore, "users", user.uid), {
+              activeRoom: "",
+            });
+
+            // Update AsyncStorage
+            await AsyncStorage.setItem(
+              "user",
+              JSON.stringify({
+                ...user,
+                activeRoom: "",
+              }),
+            );
+
+            Alert.alert("Success", "You left the room successfully.");
+
+            router.replace("/(drawer)/Onlineplay");
+          } catch (error) {
+            console.log("Leave Room Error:", error);
+
+            Alert.alert(
+              "Leave Failed",
+              error.message || "Could not leave the room.",
+            );
+          } finally {
+            setLeaving(false);
+          }
+        },
+      },
+    ]);
+  };
 
   if (loading) {
     return (
@@ -77,9 +246,11 @@ export default function Room() {
 
             <View style={styles.playerDetails}>
               <Text style={styles.playerName}>{player.name || "Player"}</Text>
+
               <Text style={styles.playerId}>
                 ID: {player.playerId || "N/A"}
               </Text>
+
               <Text style={styles.coins}>🪙 {player.coins ?? 10000} coins</Text>
             </View>
 
@@ -95,6 +266,24 @@ export default function Room() {
       )}
 
       {players.length === 5 && <Text style={styles.full}>Room Full!</Text>}
+
+      {hostId === currentUserId && roomStatus === "waiting" && (
+        <TouchableOpacity style={styles.startButton} onPress={handleStartGame}>
+          <Text style={styles.startButtonText}>Start Game</Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        style={[styles.leaveButton, leaving && styles.disabledButton]}
+        onPress={handleLeaveRoom}
+        disabled={leaving}
+      >
+        {leaving ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={styles.leaveText}>Leave Room</Text>
+        )}
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -194,5 +383,34 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
     marginTop: 20,
+  },
+  startButton: {
+    backgroundColor: "#00A8CC",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 20,
+  },
+
+  startButtonText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "bold",
+  },
+  leaveButton: {
+    backgroundColor: "#D9364F",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 30,
+    marginBottom: 20,
+  },
+  leaveText: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });

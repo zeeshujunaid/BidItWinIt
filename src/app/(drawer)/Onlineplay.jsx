@@ -10,8 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-import { ref, onValue, get, update } from "firebase/database";
+import { ref, onValue, runTransaction } from "firebase/database";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, firestore } from "../utils/Firebase";
 
@@ -43,80 +42,89 @@ export default function OnlinePlay() {
     return unsubscribe;
   }, []);
 
-  const handleJoinRoom = async (roomId) => {
-    if (joiningRoom) return;
+ 
+const handleJoinRoom = async (roomId) => {
+  if (joiningRoom) return;
 
-    setJoiningRoom(roomId);
+  setJoiningRoom(roomId);
 
-    try {
-      // 1. Logged-in user local storage se read karo
-      const savedUser = await AsyncStorage.getItem("user");
+  try {
+    // 1. Logged-in user local storage se read karo
+    const savedUser = await AsyncStorage.getItem("user");
 
-      if (!savedUser) {
-        Alert.alert("Login Required", "Pehle login karo.");
-        return;
-      }
+    if (!savedUser) {
+      Alert.alert("Login Required", "Pehle login karo.");
+      return;
+    }
 
-      const localUser = JSON.parse(savedUser);
-      const uid = localUser.uid;
+    const localUser = JSON.parse(savedUser);
+    const uid = localUser.uid;
 
-      if (!uid) {
-        Alert.alert("User Error", "User ID nahi mili. Dobara login karo.");
-        return;
-      }
+    if (!uid) {
+      Alert.alert("User Error", "User ID nahi mili. Dobara login karo.");
+      return;
+    }
 
-      // 2. Latest profile Firestore se read karo
-      const userRef = doc(firestore, "users", uid);
-      const userSnapshot = await getDoc(userRef);
+    // 2. Latest profile Firestore se read karo
+    const userRef = doc(firestore, "users", uid);
+    const userSnapshot = await getDoc(userRef);
 
-      if (!userSnapshot.exists()) {
-        Alert.alert("Profile Missing", "Firestore profile nahi mili.");
-        return;
-      }
+    if (!userSnapshot.exists()) {
+      Alert.alert("Profile Missing", "Firestore profile nahi mili.");
+      return;
+    }
 
-      const user = userSnapshot.data();
+    const user = userSnapshot.data();
 
-      // 3. Check karo player pehle kisi room mein hai ya nahi
-      const activeRoom = user.activeRoom || "";
+    // 3. Check karo player pehle kisi room mein hai ya nahi
+    const activeRoom = user.activeRoom || "";
 
-      if (activeRoom && activeRoom !== roomId) {
-        Alert.alert(
-          "Already in a Room",
-          `Tum pehle ${activeRoom} mein ho. Pehle us room se leave karo.`,
-        );
-        return;
-      }
+    if (activeRoom && activeRoom !== roomId) {
+      Alert.alert(
+        "Already in a Room",
+        `Tum pehle ${activeRoom} mein ho. Pehle us room se leave karo.`,
+      );
+      return;
+    }
 
-      // 4. Latest room data Firebase se read karo
-      const roomRef = ref(db, `Rooms/${roomId}`);
-      const roomSnapshot = await get(roomRef);
+    // 4. Player data prepare karo
+    const playerData = {
+      uid,
+      name: user.name || localUser.name || "Player",
+      playerId: user.playerId || localUser.playerId || "",
+      coins: Number(user.coins ?? localUser.coins ?? 10000),
+      isConnected: true,
+    };
 
-      if (!roomSnapshot.exists()) {
-        Alert.alert("Room Not Found", "Yeh room Firebase mein nahi mila.");
-        return;
-      }
+    // 5. Room transaction: player join + host assignment
+    const roomRef = ref(db, `Rooms/${roomId}`);
 
-      const room = roomSnapshot.val();
+    const result = await runTransaction(roomRef, (room) => {
+      if (!room) return;
+
       const players = room.players || {};
-      const alreadyJoined = Boolean(players[uid]);
-      const playerCount = Object.keys(players).length;
+
+      // Already joined player
+      if (players[uid]) {
+        return room;
+      }
+
+      // New players sirf waiting room join kar sakte hain
+      if (room.status !== "waiting") {
+        return;
+      }
+
+      // Room full check
       const maxPlayers = room.maxPlayers || 5;
 
-      // 5. New players sirf waiting room join kar sakte hain
-      if (!alreadyJoined && room.status !== "waiting") {
-        Alert.alert("Room Unavailable", "Yeh room abhi join nahi ho sakta.");
+      if (Object.keys(players).length >= maxPlayers) {
         return;
       }
 
-      if (!alreadyJoined && playerCount >= maxPlayers) {
-        Alert.alert("Room Full", "Is room mein 5 players already hain.");
-        return;
-      }
-
-      // 6. Available seat assign karo
-      const usedSeats = Object.values(players)
-        .map((player) => player.seatIndex)
-        .filter((seat) => Number.isInteger(seat));
+      // Available seat assign karo
+      const usedSeats = Object.values(players).map(
+        (player) => player.seatIndex,
+      );
 
       let seatIndex = 0;
 
@@ -124,67 +132,69 @@ export default function OnlinePlay() {
         seatIndex++;
       }
 
-      if (!alreadyJoined && seatIndex >= maxPlayers) {
-        Alert.alert("Room Full", "Koi seat available nahi hai.");
+      if (seatIndex >= maxPlayers) {
         return;
       }
 
-      // 7. Player record RTDB mein save karo
-      const playerData = {
-        uid,
-        name: user.name || localUser.name || "Player",
-        playerId: user.playerId || localUser.playerId || "",
-        coins: Number(user.coins ?? localUser.coins ?? 10000),
-        isConnected: true,
-        seatIndex: alreadyJoined ? players[uid].seatIndex : seatIndex,
+      // Add new player
+      room.players = {
+        ...players,
+        [uid]: {
+          ...playerData,
+          seatIndex,
+        },
       };
 
-      const updates = {
-        [`Rooms/${roomId}/players/${uid}`]: playerData,
-        [`users/${uid}/activeRoom`]: roomId,
-      };
+      // First player becomes host
+      if (!room.hostId) {
+        room.hostId = uid;
+      }
 
-      // RTDB aur Firestore alag databases hain.
-      // Is update mein sirf RTDB path use ho sakta hai,
-      // isliye player record pehle RTDB mein save karte hain.
-      await update(ref(db), {
-        [`Rooms/${roomId}/players/${uid}`]: playerData,
-      });
+      return room;
+    });
 
-      // 8. Firestore profile par activeRoom save karo
-     await updateDoc(userRef, {
-       activeRoom: roomId,
-     });
-
-      // 9. Local user data bhi update karo
-      await AsyncStorage.setItem(
-        "user",
-        JSON.stringify({
-          ...localUser,
-          uid,
-          name: playerData.name,
-          playerId: playerData.playerId,
-          coins: playerData.coins,
-          activeRoom: roomId,
-        }),
-      );
-
-      // 10. Temporary Room route par jao
-      router.push({
-        pathname: "/Room",
-        params: { roomId },
-      });
-    } catch (error) {
-      console.log("Join room error:", error);
-
-      Alert.alert(
-        "Join Failed",
-        error?.message || "Room join nahi ho saka. Dobara try karo.",
-      );
-    } finally {
-      setJoiningRoom("");
+    if (!result.committed) {
+      Alert.alert("Join Failed", "Room full hai ya ab join nahi ho sakta.");
+      return;
     }
-  };
+
+    // 6. Firestore profile par activeRoom save karo
+    await updateDoc(userRef, {
+      activeRoom: roomId,
+    });
+
+    // 7. Local user data update karo
+    const joinedPlayer = result.snapshot.child(`players/${uid}`).val();
+
+    await AsyncStorage.setItem(
+      "user",
+      JSON.stringify({
+        ...localUser,
+        uid,
+        name: joinedPlayer.name,
+        playerId: joinedPlayer.playerId,
+        coins: joinedPlayer.coins,
+        activeRoom: roomId,
+      }),
+    );
+
+    // 8. Room screen par navigate karo
+    router.push({
+      pathname: "/Room",
+      params: { roomId },
+    });
+  } catch (error) {
+    console.log("Join room error:", error);
+
+    Alert.alert(
+      "Join Failed",
+      error?.message || "Room join nahi ho saka. Dobara try karo.",
+    );
+  } finally {
+    setJoiningRoom("");
+  }
+};
+
 
   if (loading) {
     return (
