@@ -11,9 +11,8 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { ref, onValue, remove, runTransaction } from "firebase/database";
-import { doc, updateDoc } from "firebase/firestore";
-
+import { ref, onValue, runTransaction } from "firebase/database";
+import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { db, firestore } from "./utils/Firebase";
 
 export default function Room() {
@@ -39,45 +38,113 @@ export default function Room() {
 
     loadUser();
   }, []);
-  const handleStartGame = async () => {
-    if (players.length < 2) {
-      Alert.alert(
-        "Not Enough Players",
-        "Game start karne ke liye kam az kam 2 players chahiye.",
-      );
-      return;
-    }
 
-    try {
-      const roomRef = ref(db, `Rooms/${roomId}`);
+const getRandomItems = (items, count = 10) => {
+  const shuffled = [...items];
 
-      const result = await runTransaction(roomRef, (room) => {
-        if (!room || room.hostId !== currentUserId) {
-          return;
-        }
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
 
-        if (room.status !== "waiting") {
-          return;
-        }
+  return shuffled.slice(0, count);
+};
 
-        if (Object.keys(room.players || {}).length < 2) {
-          return;
-        }
 
-        return {
-          ...room,
-          status: "playing",
-        };
-      });
+ const handleStartGame = async () => {
+  
+   if (players.length < 2) {
+     Alert.alert(
+       "Not Enough Players",
+       "Game start karne ke liye kam az kam 2 players chahiye.",
+     );
+     return;
+   }
 
-      if (!result.committed) {
-        Alert.alert("Unable to Start", "Room start nahi ho saka.");
-      }
-    } catch (error) {
-      console.log("Start game error:", error);
-      Alert.alert("Error", error.message);
-    }
-  };
+   try {
+     const roomRef = ref(db, `Rooms/${roomId}`);
+
+     // Check room status and host
+     const result = await runTransaction(roomRef, (room) => {
+       if (!room || room.hostId !== currentUserId) return;
+       if (room.status !== "waiting") return;
+       if (Object.keys(room.players || {}).length < 2) return;
+
+       // Temporary lock so another start attempt cannot run
+       return {
+         ...room,
+         status: "preparing",
+       };
+     });
+
+     if (!result.committed) {
+       Alert.alert("Unable to Start", "Room start nahi ho saka.");
+       return;
+     }
+
+     // Fetch items from Firestore
+     const gameDataRef = collection(firestore, "Gamedata");
+     const snapshot = await getDocs(gameDataRef);
+
+     const allItems = snapshot.docs.map((itemDoc) => ({
+       id: itemDoc.id,
+       ...itemDoc.data(),
+     }));
+
+if (allItems.length === 0) {
+  throw new Error("Gamedata collection mein koi item nahi mila.");
+}
+
+     // Select maximum 10 random items
+     const selectedItems = getRandomItems(allItems, 10);
+
+     // Save selected items and start game
+     const saveResult = await runTransaction(roomRef, (room) => {
+       if (!room || room.hostId !== currentUserId) return;
+       if (room.status !== "preparing") return;
+
+       const sortedPlayers = Object.values(room.players || {}).sort(
+         (a, b) => a.seatIndex - b.seatIndex,
+       );
+
+       return {
+         ...room,
+         gameItems: selectedItems,
+         currentItemIndex: 0,
+         currentRound: 1,
+         currentBidPrice: 0,
+         currentHighBidder: "",
+
+         // First turn goes to Seat 1
+         activePlayerId: sortedPlayers[0]?.uid || "",
+
+         // No Bid tracking
+         passedPlayers: {},
+
+         // Auction status
+         auctionStatus: "bidding",
+
+         status: "playing",
+       };
+     });
+
+     if (!saveResult.committed) {
+       throw new Error("Game data save nahi ho saka.");
+     }
+   } catch (error) {
+     console.log("Start Game Error:", error);
+
+     // Allow host to retry if preparation failed
+     await runTransaction(ref(db, `Rooms/${roomId}`), (room) => {
+       if (room?.hostId === currentUserId && room.status === "preparing") {
+         return { ...room, status: "waiting" };
+       }
+       return;
+     });
+
+     Alert.alert("Error", error.message);
+   }
+ };
 
 useEffect(() => {
   if (!roomId) {
@@ -102,7 +169,9 @@ useEffect(() => {
 
       setPlayers(playerList);
       setHostId(room.hostId || "");
-      setRoomStatus(room.status || "waiting");
+   if (room.status === "playing") {
+     router.replace(`/Game?roomId=${roomId}`);
+   }
       setLoading(false);
     },
     (error) => {
