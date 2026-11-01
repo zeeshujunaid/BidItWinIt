@@ -76,11 +76,7 @@ export default function Game() {
   const passedPlayers = room?.passedPlayers || {};
 
   const imageurl =
-    currentItem?.imageurl ||
-    currentItem?.imageURL ||
-    currentItem?.photoUrl ||
-    currentItem?.image ||
-    "";
+    currentItem?.imageurl;
 
   useEffect(() => {
     setImageError(false);
