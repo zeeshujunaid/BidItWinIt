@@ -1,40 +1,28 @@
-import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   Image,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
 } from "react-native";
 import PicChanger from "./PicChanger";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import {useAuth} from "../context/Authcontext"
+import { useNavigation } from "expo-router";
 
 export default function Header() {
-  const [user, setUser] = useState(null);
+  const { user, loading, logout } = useAuth();
 
-  const handleMenuPress = () => {
-    // Hamburger menu logic yahan add karenge
-  };
+const navigation = useNavigation();
 
-  useEffect(() => {
-    const getUserData = async () => {
-      try {
-        const storedUser = await AsyncStorage.getItem("user");
+const handleMenuPress = () => {
+  navigation.openDrawer();
+};
 
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        console.log("Error getting user:", error);
-      }
-    };
+  if (loading) {
+    return <View style={{ height: 240, backgroundColor: "#0B1020" }} />;
+  }
 
-    getUserData();
-  }, []);
+
 
   return (
     <View style={styles.header}>
@@ -47,8 +35,6 @@ export default function Header() {
           style={styles.menuButton}
           onPress={handleMenuPress}
           activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
         >
           <View style={styles.menuLine} />
           <View style={styles.menuLine} />

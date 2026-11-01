@@ -18,29 +18,18 @@ import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { db, firestore } from "./utils/Firebase";
 import Loader from "./components/Loader";
 import Bubbels from "./components/Bubbels";
+import {useAuth} from "./context/Authcontext"
 
 export default function Room() {
+const { user, loading: authLoading } = useAuth();
   const { roomId } = useLocalSearchParams();
-  const [currentUserId, setCurrentUserId] = useState("");
+const currentUserId = user?.uid || "";
   const router = useRouter();
   const [hostId, setHostId] = useState("");
   const [roomStatus, setRoomStatus] = useState("waiting");
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      const savedUser = await AsyncStorage.getItem("user");
-
-      if (savedUser) {
-        const user = JSON.parse(savedUser);
-        setCurrentUserId(user.uid);
-      }
-    };
-
-    loadUser();
-  }, []);
 
   const getRandomItems = (items, count = 10) => {
     const shuffled = [...items];
@@ -201,16 +190,10 @@ export default function Room() {
           setLeaving(true);
 
           try {
-            const savedUser = await AsyncStorage.getItem("user");
-
-            if (!savedUser) {
-              throw new Error("User information not found.");
-            }
-
-            const user = JSON.parse(savedUser);
-
-            if (!user.uid) {
-              throw new Error("User UID not found.");
+            if (!user?.uid) {
+              throw new Error(
+                "User information not found. Please login again.",
+              );
             }
 
             // Update room atomically
@@ -261,14 +244,6 @@ export default function Room() {
               activeRoom: "",
             });
 
-            // Update AsyncStorage
-            await AsyncStorage.setItem(
-              "user",
-              JSON.stringify({
-                ...user,
-                activeRoom: "",
-              }),
-            );
 
             Alert.alert("Success", "You left the room successfully.");
 

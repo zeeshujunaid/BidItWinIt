@@ -1,4 +1,3 @@
-import React, { useEffect, useState } from "react";
 import {
   Image,
   ScrollView,
@@ -8,8 +7,7 @@ import {
   View,
 } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import {useAuth} from "../context/Authcontext"
 
 const MENU_ITEMS = [
   { label: "Home", icon: "⌂", path: "/Home" },
@@ -20,28 +18,9 @@ const MENU_ITEMS = [
 ];
 
 export default function CustomDrawer(props) {
-  const [user, setUser] = useState(null);
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    const getUserData = async () => {
-      try {
-        const storedUser = await AsyncStorage.getItem("user");
-
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        console.log("Error getting user:", error);
-      }
-    };
-
-    getUserData();
-  }, []);
 
   const go = (path) => {
     props.navigation.closeDrawer();
@@ -52,6 +31,10 @@ export default function CustomDrawer(props) {
     if (!path) return false;
     return pathname.toLowerCase() === path.toLowerCase();
   };
+
+  if (loading) {
+    return <View style={{ height: 240, backgroundColor: "#0B1020" }} />;
+  }
 
   return (
     <View style={styles.container}>
@@ -130,6 +113,30 @@ export default function CustomDrawer(props) {
             );
           })}
         </View>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={async () => {
+            await logout();
+            router.replace("/(auth)/Login");
+          }}
+          style={styles.logoutButton}
+        >
+          <View style={styles.logoutLeft}>
+            <View style={styles.logoutIconBox}>
+              <Text style={styles.logoutIcon}>⎋</Text>
+            </View>
+
+            <View>
+              <Text style={styles.logoutTitle}>Logout</Text>
+              <Text style={styles.logoutSubtitle}>
+                Sign out of your account
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.logoutArrow}>→</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Bottom Player Status */}
@@ -334,6 +341,60 @@ const styles = StyleSheet.create({
 
   menuLabelActive: {
     color: "#FFFFFF",
+  },
+
+  logoutButton: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(217, 54, 79, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(217, 54, 79, 0.35)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  logoutLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  logoutIconBox: {
+    width: 39,
+    height: 39,
+    borderRadius: 11,
+    backgroundColor: "rgba(217, 54, 79, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  logoutIcon: {
+    color: "#F87171",
+    fontSize: 23,
+    fontWeight: "bold",
+  },
+
+  logoutTitle: {
+    color: "#FCA5A5",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  logoutSubtitle: {
+    color: "#94A3B8",
+    fontSize: 10,
+    marginTop: 3,
+  },
+
+  logoutArrow: {
+    color: "#F87171",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginRight: 5,
   },
 
   bottom: {

@@ -13,8 +13,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from "react-native-toast-message";
 import Loader from "../components/Loader";
 import { auth, firestore } from "../utils/Firebase";
@@ -45,31 +43,7 @@ export default function Login() {
         password,
       );
 
-      const firebaseUser = userCredential.user;
-
-      const userRef = doc(firestore, "users", firebaseUser.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        Toast.show({
-          type: "error",
-          text1: "Profile Not Found",
-          text2: "Your account exists, but your player profile is missing.",
-        });
-        return;
-      }
-
-      const profile = userSnap.data();
-
-      const userData = {
-        uid: firebaseUser.uid,
-        name: profile.name,
-        email: firebaseUser.email,
-        playerId: profile.playerId,
-        coins: profile.coins,
-      };
-
-      await AsyncStorage.setItem("user", JSON.stringify(userData));
+    await signInWithEmailAndPassword(auth, email.trim(), password);
 
       Toast.show({
         type: "success",

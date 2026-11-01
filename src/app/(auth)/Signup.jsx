@@ -17,7 +17,6 @@ import Loader from "../components/Loader";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, firestore } from "../utils/Firebase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function Signup() {
   const router = useRouter();
@@ -66,17 +65,6 @@ export default function Signup() {
         playerId: playerId,
         activeRoom: "",
       });
-
-     const userData = {
-       uid: user.uid,
-       name: name.trim(),
-       email: email.trim(),
-       coins: startingCoins,
-       playerId: playerId,
-       activeRoom: "",
-     };
-
-     await AsyncStorage.setItem("user", JSON.stringify(userData));
 
       Toast.show({
         type: "success",

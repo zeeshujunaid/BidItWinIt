@@ -9,9 +9,9 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import {doc, updateDoc } from "firebase/firestore";
+import { useAuth } from "../context/Authcontext";
 import { ref, onValue, runTransaction } from "firebase/database";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, firestore } from "../utils/Firebase";
 import Header from "../components/Header";
 import Bubbels from "../components/Bubbels";
@@ -21,7 +21,7 @@ const ROOM_NAMES = ["Room1", "Room2", "Room3", "Room4", "Room5"];
 
 export default function OnlinePlay() {
   const router = useRouter();
-
+  const { user, loading: authLoading } = useAuth();
   const [rooms, setRooms] = useState({});
   const [loading, setLoading] = useState(true);
   const [joiningRoom, setJoiningRoom] = useState("");
@@ -49,37 +49,16 @@ export default function OnlinePlay() {
 const handleJoinRoom = async (roomId) => {
   if (joiningRoom) return;
 
+  if (!user?.uid) {
+    Alert.alert("Login Required", "Pehle login karo.");
+    return;
+  }
+
   setJoiningRoom(roomId);
 
   try {
-    // 1. Logged-in user local storage se read karo
-    const savedUser = await AsyncStorage.getItem("user");
+    const uid = user.uid;
 
-    if (!savedUser) {
-      Alert.alert("Login Required", "Pehle login karo.");
-      return;
-    }
-
-    const localUser = JSON.parse(savedUser);
-    const uid = localUser.uid;
-
-    if (!uid) {
-      Alert.alert("User Error", "User ID nahi mili. Dobara login karo.");
-      return;
-    }
-
-    // 2. Latest profile Firestore se read karo
-    const userRef = doc(firestore, "users", uid);
-    const userSnapshot = await getDoc(userRef);
-
-    if (!userSnapshot.exists()) {
-      Alert.alert("Profile Missing", "Firestore profile nahi mili.");
-      return;
-    }
-
-    const user = userSnapshot.data();
-
-    // 3. Check karo player pehle kisi room mein hai ya nahi
     const activeRoom = user.activeRoom || "";
 
     if (activeRoom && activeRoom !== roomId) {
@@ -90,16 +69,14 @@ const handleJoinRoom = async (roomId) => {
       return;
     }
 
-    // 4. Player data prepare karo
     const playerData = {
       uid,
-      name: user.name || localUser.name || "Player",
-      playerId: user.playerId || localUser.playerId || "",
-      coins: Number(user.coins ?? localUser.coins ?? 10000),
+      name: user.name || "Player",
+      playerId: user.playerId || "",
+      coins: Number(user.coins ?? 10000),
       isConnected: true,
     };
 
-    // 5. Room transaction: player join + host assignment
     const roomRef = ref(db, `Rooms/${roomId}`);
 
     const result = await runTransaction(roomRef, (room) => {
@@ -161,27 +138,10 @@ const handleJoinRoom = async (roomId) => {
       return;
     }
 
-    // 6. Firestore profile par activeRoom save karo
-    await updateDoc(userRef, {
-      activeRoom: roomId,
-    });
+   await updateDoc(doc(firestore, "users", uid), {
+     activeRoom: roomId,
+   });
 
-    // 7. Local user data update karo
-    const joinedPlayer = result.snapshot.child(`players/${uid}`).val();
-
-    await AsyncStorage.setItem(
-      "user",
-      JSON.stringify({
-        ...localUser,
-        uid,
-        name: joinedPlayer.name,
-        playerId: joinedPlayer.playerId,
-        coins: joinedPlayer.coins,
-        activeRoom: roomId,
-      }),
-    );
-
-    // 8. Room screen par navigate karo
     router.push({
       pathname: "/Room",
       params: { roomId },
@@ -199,7 +159,7 @@ const handleJoinRoom = async (roomId) => {
 };
 
 
-  if (loading) {
+  if (loading || authLoading) {
     return <Loader />;
   }
 
