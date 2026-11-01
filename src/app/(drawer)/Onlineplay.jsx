@@ -335,7 +335,7 @@ return (
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#101d30",
+    backgroundColor: "#0B1020",
     overflow: "hidden",
   },
 

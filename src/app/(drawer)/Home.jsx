@@ -117,7 +117,7 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#080D1B",
+    backgroundColor: "#0B1020",
   },
 
   glow: {
