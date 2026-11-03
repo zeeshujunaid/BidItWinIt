@@ -15,7 +15,7 @@ import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import Toast from "react-native-toast-message";
 import Loader from "../components/Loader";
-import { auth, firestore } from "../utils/Firebase";
+import { auth } from "../utils/Firebase";
 
 export default function Login() {
   const router = useRouter();
@@ -37,18 +37,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password,
-      );
 
     await signInWithEmailAndPassword(auth, email.trim(), password);
 
       Toast.show({
         type: "success",
         text1: "Login Successful!",
-        text2: `Welcome back, ${profile.name}!`,
+        text2: "welcome back to BidItWinIt.",
       });
 
       router.replace("/(drawer)/Home");

@@ -5,15 +5,16 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
+  ImageBackground,
   Alert,
   ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "./context/Authcontext";
 import { ref, onValue, runTransaction } from "firebase/database";
 import { doc, updateDoc } from "firebase/firestore";
 import { db, firestore } from "./utils/Firebase";
+import Loader from "./components/Loader";
 
 const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
 
@@ -22,23 +23,10 @@ export default function Game() {
   const router = useRouter();
 
   const [room, setRoom] = useState(null);
-  const [user, setUser] = useState(null);
+ const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      const savedUser = await AsyncStorage.getItem("user");
-
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
-    };
-
-    loadUser();
-  }, []);
-
   useEffect(() => {
     if (!roomId) return;
 
@@ -293,13 +281,6 @@ export default function Game() {
               activeRoom: "",
             });
 
-            await AsyncStorage.setItem(
-              "user",
-              JSON.stringify({
-                ...user,
-                activeRoom: "",
-              }),
-            );
 
             router.replace("/(drawer)/Onlineplay");
           } catch (error) {
@@ -311,14 +292,9 @@ export default function Game() {
     ]);
   };
 
-  if (loading || !user || !room) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#00D9FF" />
-        <Text style={styles.text}>Loading game...</Text>
-      </View>
-    );
-  }
+ if (loading || authLoading || !user || !room) {
+   return <Loader/>;
+ }
 
   if (room.status === "completed") {
     return (
@@ -345,17 +321,22 @@ export default function Game() {
   }
 
   const winner = players.find((player) => player.uid === room.winnerId);
+return (
+  <ScrollView
+    contentContainerStyle={styles.container}
+    showsVerticalScrollIndicator={false}
+  >
+    <Text style={styles.title}>BID IT WIN IT</Text>
 
-  return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Bid It Win It</Text>
-
-      <Text style={styles.room}>Room: {roomId}</Text>
-
+    <View style={styles.topInfo}>
+      <Text style={styles.room}>ROOM: {roomId}</Text>
       <Text style={styles.round}>
-        Item {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
+        ITEM {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
       </Text>
+    </View>
 
+    {/* ITEM IMAGE */}
+    <View style={styles.itemImageBox}>
       {imageurl && !imageError ? (
         <Image
           source={{ uri: imageurl }}
@@ -371,276 +352,535 @@ export default function Game() {
           <Text style={styles.text}>Image not available</Text>
         </View>
       )}
+    </View>
 
+    {/* ITEM DETAILS */}
+    <View style={styles.itemDetails}>
       <Text style={styles.itemName}>{currentItem.name}</Text>
-
       <Text style={styles.description}>{currentItem.description}</Text>
+    </View>
 
-      <Text style={styles.feature}>{currentItem.specialFeature}</Text>
-
-      <View style={styles.bidBox}>
-        <Text style={styles.bidLabel}>Current Highest Bid</Text>
-        <Text style={styles.bidPrice}>${currentBid}</Text>
-        <Text style={styles.bidder}>
-          Highest Bidder:{" "}
-          {players.find((player) => player.uid === room.currentHighBidder)
-            ?.name || "No bids yet"}
-        </Text>
+    {/* HIGHEST BID */}
+    <View style={styles.bidBox}>
+      <View style={{ alignItems: "center",flexDirection: "row", justifyContent: "center" }}>
+      <Text style={styles.bidLabel}>HIGHEST BID</Text>
+      <Text style={styles.bidder}>
+        {players.find((player) => player.uid === room.currentHighBidder)
+          ?.name || "No bids yet"}
+      </Text>
       </View>
+      <Text style={styles.bidPrice}>${currentBid}</Text>
+    </View>
 
-      <View style={styles.turnBox}>
-        <Text style={styles.turnText}>
-          {room.auctionStatus === "finished"
-            ? winner
-              ? `Winner: ${winner.name}`
-              : "Item Unsold"
-            : activePlayer
-              ? `${activePlayer.name}'s Turn`
-              : "Waiting..."}
-        </Text>
-      </View>
+    {/* TURN STATUS */}
+    {/* <View style={styles.turnBox}>
+      <Text style={styles.turnText}>
+        {room.auctionStatus === "finished"
+          ? winner
+            ? `WINNER: ${winner.name}`
+            : "ITEM UNSOLD"
+          : activePlayer
+            ? `${activePlayer.name}'S TURN`
+            : "WAITING..."}
+      </Text>
+    </View> */}
 
-      {room.auctionStatus === "finished" ? (
-        <View style={styles.resultBox}>
-          <Text style={styles.resultTitle}>
-            {winner ? "Item Won!" : "No One Bid"}
-          </Text>
-          <Text style={styles.text}>
-            {winner
-              ? `${winner.name} won this item for $${room.winningBid}`
-              : "This item remained unsold."}
-          </Text>
-        </View>
-      ) : (
-        <>
-          <Text style={styles.buttonHeading}>
-            {isMyTurn ? "Your Turn - Place Your Bid" : "Waiting for Player"}
-          </Text>
+    {/* CHARACTERS AND TABLE IMAGE */}
+    {/* CHARACTERS AND PLAYER PROFILES */}
+    <ImageBackground
+      source={require("../../assets/images/chracter/waitingchracter.png")}
+      style={styles.characterTable}
+      resizeMode="stretch"
+    >
+      {[0, 1, 2, 3, 4].map((seatIndex) => {
+        const player = players.find((p) => Number(p.seatIndex) === seatIndex);
 
-          {isMyTurn ? (
-            <>
-              <View style={styles.buttons}>
-                {BID_AMOUNTS.map((amount) => (
-                  <TouchableOpacity
-                    key={amount}
-                    style={styles.bidButton}
-                    onPress={() => handleAuctionAction("bid", amount)}
-                    disabled={actionLoading}
-                  >
-                    <Text style={styles.buttonText}>+${amount}</Text>
-                  </TouchableOpacity>
-                ))}
+        const avatar =
+          player?.photoURL ||
+          player?.avatarUrl ||
+          player?.profilePic ||
+          player?.photoUrl;
+
+        const isTurn = player?.uid === room.activePlayerId;
+
+        return (
+          <View
+            key={seatIndex}
+            style={[styles.characterSeat, styles[`seat${seatIndex + 1}`]]}
+          >
+            {/* PROFILE IMAGE */}
+            <View
+              style={[
+                styles.profileBorder,
+                player && styles.activeProfile,
+                isTurn && styles.turnProfile,
+              ]}
+            >
+              {avatar ? (
+                <Image source={{ uri: avatar }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.emptyAvatar}>
+                  <Text style={styles.plus}>+</Text>
+                </View>
+              )}
+            </View>
+
+            {/* PLAYER NAME */}
+            {player && (
+              <View style={styles.nameTag}>
+                <Text style={styles.characterName} numberOfLines={1}>
+                  {player.name || "Player"}
+                </Text>
               </View>
+            )}
+
+            {/* TURN INDICATOR */}
+            {isTurn && room.auctionStatus !== "finished" && (
+              <View style={styles.characterTurnBadge}>
+                <Text style={styles.characterTurnText}>YOUR TURN</Text>
+              </View>
+            )}
+
+            {/* PASSED */}
+            {passedPlayers[player?.uid] && (
+              <Text style={styles.passedBadge}>PASSED</Text>
+            )}
+          </View>
+        );
+      })}
+    </ImageBackground>
+
+    {/* RESULT */}
+    {room.auctionStatus === "finished" ? (
+      <View style={styles.resultBox}>
+        <Text style={styles.resultTitle}>
+          {winner ? "ITEM WON!" : "NO ONE BID"}
+        </Text>
+
+        <Text style={styles.text}>
+          {winner
+            ? `${winner.name} won this item for $${room.winningBid}`
+            : "This item remained unsold."}
+        </Text>
+      </View>
+    ) : (
+      <>
+        <Text style={styles.buttonHeading}>
+          {isMyTurn ? "PLACE YOUR BID" : "WAITING FOR PLAYER"}
+        </Text>
+
+        {isMyTurn ? (
+          <>
+            <View style={styles.buttons}>
+              {BID_AMOUNTS.map((amount) => (
+                <TouchableOpacity
+                  key={amount}
+                  style={[
+                    styles.bidButton,
+                    actionLoading && styles.disabledButton,
+                  ]}
+                  onPress={() => handleAuctionAction("bid", amount)}
+                  disabled={actionLoading}
+                >
+                  <Text style={styles.buttonText}>${amount}</Text>
+                </TouchableOpacity>
+              ))}
 
               <TouchableOpacity
-                style={styles.noBidButton}
+                style={[
+                  styles.bidButton,
+                  styles.noBidButton,
+                  actionLoading && styles.disabledButton,
+                ]}
                 onPress={() => handleAuctionAction("pass")}
                 disabled={actionLoading}
               >
-                <Text style={styles.buttonText}>No Bid / Pass</Text>
+                <Text style={styles.buttonText}>NO BID</Text>
               </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.waitingText}>
-              {activePlayer?.name || "Another player"} is making a decision...
-            </Text>
-          )}
-        </>
-      )}
+            </View>
+          </>
+        ) : (
+          <Text style={styles.waitingText}>
+            {activePlayer?.name || "Another player"} is making a decision...
+          </Text>
+        )}
+      </>
+    )}
 
-      <Text style={styles.playersHeading}>Players</Text>
+    {/* PLAYER STATUS */}
+    {/* <View style={styles.playersSection}>
+      <Text style={styles.playersHeading}>PLAYERS</Text>
 
       {players.map((player) => (
         <View key={player.uid} style={styles.playerCard}>
           <Text style={styles.playerName}>
             {player.name}
-            {player.uid === room.activePlayerId ? "  (Turn)" : ""}
-            {passedPlayers[player.uid] ? "  (Passed)" : ""}
-            {player.uid === room.currentHighBidder ? "  (Highest)" : ""}
+            {player.uid === room.activePlayerId ? "  • YOUR TURN" : ""}
+            {passedPlayers[player.uid] ? "  • PASSED" : ""}
+            {player.uid === room.currentHighBidder ? "  • HIGHEST BID" : ""}
           </Text>
         </View>
       ))}
-
-      <TouchableOpacity style={styles.bidButton} onPress={handleNextRound}>
-        <Text style={styles.buttonText}>Next Round</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.leaveButton} onPress={handleLeaveRoom}>
-        <Text style={styles.buttonText}>Leave Room</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
+    </View> */}
+  </ScrollView>
+);
 }
 
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     backgroundColor: "#07111F",
-    padding: 20,
+    paddingHorizontal: 18,
     paddingTop: 45,
+    paddingBottom: 30,
     alignItems: "center",
   },
-  center: {
-    flex: 1,
-    backgroundColor: "#07111F",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+
   title: {
     color: "#FFFFFF",
-    fontSize: 27,
+    fontSize: 25,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+
+  topInfo: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    marginBottom: 18,
+  },
+
+  room: {
+    color: "#38BDF8",
+    fontSize: 12,
     fontWeight: "bold",
   },
-  room: {
-    color: "#00D9FF",
-    marginTop: 8,
-  },
+
   round: {
-    color: "#FFD166",
-    marginTop: 20,
-    fontSize: 16,
+    color: "#FACC15",
+    fontSize: 12,
+    fontWeight: "bold",
   },
+
+  itemImageBox: {
+    width: "100%",
+    height: 150,
+    backgroundColor: "#0D1B2D",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+    borderRadius: 5,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   image: {
-    width: 230,
-    height: 190,
-    marginTop: 20,
+    width: "100%",
+    height: "100%",
   },
+
   imagePlaceholder: {
-    width: 230,
-    height: 190,
-    marginTop: 20,
+    flex: 1,
+    width: "100%",
     backgroundColor: "#122238",
-    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
   },
+
+  itemDetails: {
+    width: "85%",
+    borderWidth: 1,
+    height: 90,
+    borderColor: "#334B68",
+    padding: 8,
+    alignItems: "center",
+    marginTop: 5,
+    backgroundColor: "#0D1B2D",
+  },
+
   itemName: {
     color: "#FFFFFF",
-    fontSize: 23,
-    fontWeight: "bold",
-    marginTop: 12,
+    fontSize: 17,
+    fontWeight: "900",
+    textAlign: "center",
   },
+
   description: {
     color: "#A8B7CA",
+    fontSize: 10,
     textAlign: "center",
-    marginTop: 8,
-  },
-  feature: {
-    color: "#FFD166",
-    marginTop: 8,
-    textAlign: "center",
-  },
-  bidBox: {
-    backgroundColor: "#122238",
-    width: "100%",
-    padding: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 25,
-  },
-  bidLabel: {
-    color: "#A8B7CA",
-  },
-  bidPrice: {
-    color: "#46E6A5",
-    fontSize: 32,
-    fontWeight: "bold",
     marginTop: 5,
   },
+
+  feature: {
+    color: "#FACC15",
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 5,
+  },
+
+  bidBox: {
+    width: "65%",
+    marginTop: 20,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0D1B2D",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+    borderRadius: 5,
+  },
+
+  bidLabel: {
+    color: "#A8B7CA",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+
+  bidPrice: {
+    color: "#FACC15",
+    fontSize: 27,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+
   bidder: {
     color: "#FFFFFF",
-    marginTop: 8,
+    fontSize: 20,
+    fontWeight: "bold",
+    marginLeft: 5,
   },
+
   turnBox: {
-    backgroundColor: "#17334B",
-    padding: 14,
-    borderRadius: 12,
     width: "100%",
-    marginTop: 18,
+    backgroundColor: "#102A40",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+    padding: 10,
+    alignItems: "center",
+    marginTop: 12,
+    borderRadius: 5,
+  },
+
+  turnText: {
+    color: "#38BDF8",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  characterTable: {
+    width: "100%",
+    height: 180,
+    position: "relative",
+    marginTop: 15,
+  },
+
+  characterSeat: {
+    position: "absolute",
+    alignItems: "center",
+    width: 65,
+  },
+
+  seat1: {
+    left: "1%",
+    top: 28,
+  },
+
+  seat2: {
+    left: "21%",
+    top: 28,
+  },
+
+  seat3: {
+    left: "41%",
+    top: 28,
+  },
+
+  seat4: {
+    left: "61%",
+    top: 28,
+  },
+
+  seat5: {
+    left: "81%",
+    top: 28,
+  },
+
+  profileBorder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: "#64748B",
+    padding: 2,
+    backgroundColor: "#07111F",
+    overflow: "hidden",
+  },
+
+  activeProfile: {
+    borderColor: "#38BDF8",
+  },
+
+  turnProfile: {
+    borderColor: "#FACC15",
+    borderWidth: 3,
+  },
+
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 50,
+  },
+
+  emptyAvatar: {
+    flex: 1,
+    borderRadius: 50,
+    backgroundColor: "#1E293B",
+    justifyContent: "center",
     alignItems: "center",
   },
-  turnText: {
-    color: "#00D9FF",
-    fontSize: 17,
+
+  plus: {
+    color: "#FFFFFF",
+    fontSize: 20,
+  },
+
+  nameTag: {
+    backgroundColor: "#07111F",
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginTop: 3,
+    maxWidth: 65,
+  },
+
+  characterName: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "bold",
+  },
+
+  characterTurnBadge: {
+    backgroundColor: "#FACC15",
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginTop: 3,
+  },
+
+  characterTurnText: {
+    color: "#07111F",
+    fontSize: 8,
+    fontWeight: "900",
+  },
+
+  hostBadge: {
+    color: "#FACC15",
+    fontSize: 8,
+    fontWeight: "bold",
+  },
+
+  passedBadge: {
+    color: "#F0445E",
+    fontSize: 8,
     fontWeight: "bold",
   },
   buttonHeading: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 25,
+    fontSize: 15,
+    fontWeight: "900",
+    marginTop: 18,
     marginBottom: 12,
+    letterSpacing: 1,
   },
+
   buttons: {
+    width: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    rowGap: 10,
   },
+
   bidButton: {
-    backgroundColor: "#00A8CC",
-    paddingVertical: 14,
-    paddingHorizontal: 19,
-    borderRadius: 10,
+    width: "31.5%",
+    minHeight: 48,
+    backgroundColor: "#102A40",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   noBidButton: {
-    backgroundColor: "#D9364F",
-    padding: 16,
-    borderRadius: 10,
-    width: "100%",
-    alignItems: "center",
-    marginTop: 15,
+    backgroundColor: "#8D2438",
+    borderColor: "#F0445E",
   },
-  waitingText: {
-    color: "#A8B7CA",
-    marginTop: 10,
-    textAlign: "center",
+
+  disabledButton: {
+    opacity: 0.5,
   },
-  resultBox: {
-    backgroundColor: "#17334B",
-    padding: 18,
-    borderRadius: 12,
-    width: "100%",
-    marginTop: 20,
-    alignItems: "center",
-  },
-  resultTitle: {
-    color: "#46E6A5",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  playersHeading: {
-    color: "#FFFFFF",
-    fontSize: 19,
-    fontWeight: "bold",
-    marginTop: 25,
-    marginBottom: 10,
-  },
-  playerCard: {
-    backgroundColor: "#122238",
-    padding: 13,
-    borderRadius: 10,
-    width: "100%",
-    marginBottom: 8,
-  },
-  playerName: {
-    color: "#FFFFFF",
-  },
-  leaveButton: {
-    backgroundColor: "#D9364F",
-    padding: 16,
-    borderRadius: 10,
-    width: "100%",
-    alignItems: "center",
-    marginTop: 25,
-    marginBottom: 30,
-  },
+
   buttonText: {
     color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 15,
+    fontWeight: "900",
+    fontSize: 16,
   },
+
+  waitingText: {
+    color: "#A8B7CA",
+    marginTop: 8,
+    textAlign: "center",
+  },
+
+  resultBox: {
+    width: "100%",
+    backgroundColor: "#102A40",
+    borderWidth: 1,
+    borderColor: "#46E6A5",
+    padding: 16,
+    borderRadius: 5,
+    marginTop: 15,
+    alignItems: "center",
+  },
+
+  resultTitle: {
+    color: "#46E6A5",
+    fontSize: 21,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+
+  playersSection: {
+    width: "100%",
+    marginTop: 20,
+  },
+
+  playersHeading: {
+    color: "#38BDF8",
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 10,
+  },
+
+  playerCard: {
+    width: "100%",
+    backgroundColor: "#0D1B2D",
+    borderWidth: 1,
+    borderColor: "#263C54",
+    padding: 10,
+    marginBottom: 6,
+    borderRadius: 4,
+  },
+
+  playerName: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+
   text: {
     color: "#FFFFFF",
     textAlign: "center",
