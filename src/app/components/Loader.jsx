@@ -6,12 +6,14 @@ import {
   Image,
   Dimensions,
 } from "react-native";
+import Bubbels from "./Bubbels";
 
 const { width, height } = Dimensions.get("screen");
 
 export default function Loader() {
   return (
     <View style={styles.overlay}>
+      <Bubbels />
       <View style={styles.content}>
         <Image
           source={require("../../../assets/images/textlogo.png")}

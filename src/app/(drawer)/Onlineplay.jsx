@@ -9,7 +9,8 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
-import {doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
+import Toast from "react-native-toast-message";
 import { useAuth } from "../context/Authcontext";
 import { ref, onValue, runTransaction } from "firebase/database";
 import { db, firestore } from "../utils/Firebase";
@@ -38,258 +39,260 @@ export default function OnlinePlay() {
       (error) => {
         console.log("Rooms error:", error);
         setLoading(false);
-        Alert.alert("Error", "Rooms load nahi ho sake.");
+        Toast.show({
+          type: "error",
+          message: "Something went wrong",
+        });
       },
     );
 
     return unsubscribe;
   }, []);
 
- 
-const handleJoinRoom = async (roomId) => {
-  if (joiningRoom) return;
+  const handleJoinRoom = async (roomId) => {
+    if (joiningRoom) return;
 
-  if (!user?.uid) {
-    Alert.alert("Login Required", "Pehle login karo.");
-    return;
-  }
-
-  setJoiningRoom(roomId);
-
-  try {
-    const uid = user.uid;
-
-    const activeRoom = user.activeRoom || "";
-
-    if (activeRoom && activeRoom !== roomId) {
-      Alert.alert(
-        "Already in a Room",
-        `Tum pehle ${activeRoom} mein ho. Pehle us room se leave karo.`,
-      );
+    if (!user?.uid) {
+      Toast.show({
+        type: "error",
+        text1: "Please log in to join a room.",
+      });
       return;
     }
 
-    const playerData = {
-      uid,
-      name: user.name || "Player",
-      playerId: user.playerId || "",
-      coins: Number(user.coins ?? 10000),
-      isConnected: true,
-    };
+    setJoiningRoom(roomId);
 
-    const roomRef = ref(db, `Rooms/${roomId}`);
+    try {
+      const uid = user.uid;
 
-    const result = await runTransaction(roomRef, (room) => {
-      if (!room) return;
+      const activeRoom = user.activeRoom || "";
 
-      const players = room.players || {};
-
-      // Already joined player
-      if (players[uid]) {
-        return room;
-      }
-
-      // New players sirf waiting room join kar sakte hain
-      if (room.status !== "waiting") {
+      if (activeRoom && activeRoom !== roomId) {
+        Toast.show({
+          type: "error",
+          text1: "You are already in another room. Please leave that room first.",
+        });
         return;
       }
 
-      // Room full check
-      const maxPlayers = room.maxPlayers || 5;
-
-      if (Object.keys(players).length >= maxPlayers) {
-        return;
-      }
-
-      // Available seat assign karo
-      const usedSeats = Object.values(players).map(
-        (player) => player.seatIndex,
-      );
-
-      let seatIndex = 0;
-
-      while (usedSeats.includes(seatIndex) && seatIndex < maxPlayers) {
-        seatIndex++;
-      }
-
-      if (seatIndex >= maxPlayers) {
-        return;
-      }
-
-      // Add new player
-      room.players = {
-        ...players,
-        [uid]: {
-          ...playerData,
-          seatIndex,
-        },
+      const playerData = {
+        uid,
+        name: user.name || "Player",
+        playerId: user.playerId || "",
+        coins: Number(user.coins ?? 10000),
+        isConnected: true,
       };
 
-      // First player becomes host
-      if (!room.hostId) {
-        room.hostId = uid;
+      const roomRef = ref(db, `Rooms/${roomId}`);
+
+      const result = await runTransaction(roomRef, (room) => {
+        if (!room) return;
+
+        const players = room.players || {};
+
+        if (players[uid]) {
+          return room;
+        }
+
+        if (room.status !== "waiting") {
+          return;
+        }
+
+        const maxPlayers = room.maxPlayers || 5;
+
+        if (Object.keys(players).length >= maxPlayers) {
+          return;
+        }
+
+        const usedSeats = Object.values(players).map(
+          (player) => player.seatIndex,
+        );
+
+        let seatIndex = 0;
+
+        while (usedSeats.includes(seatIndex) && seatIndex < maxPlayers) {
+          seatIndex++;
+        }
+
+        if (seatIndex >= maxPlayers) {
+          return;
+        }
+
+        room.players = {
+          ...players,
+          [uid]: {
+            ...playerData,
+            seatIndex,
+          },
+        };
+
+        if (!room.hostId) {
+          room.hostId = uid;
+        }
+
+        return room;
+      });
+
+      if (!result.committed) {
+        Toast.show({
+          type: "error",
+          text1: "Room is full or not available.",
+        });
+        return;
       }
 
-      return room;
-    });
+      await updateDoc(doc(firestore, "users", uid), {
+        activeRoom: roomId,
+      });
 
-    if (!result.committed) {
-      Alert.alert("Join Failed", "Room full hai ya ab join nahi ho sakta.");
-      return;
+      router.push({
+        pathname: "/Room",
+        params: { roomId },
+      });
+    } catch (error) {
+      console.log("Join room error:", error);
+
+      Toast.show({
+        type: "error",
+        text1: "Failed to join room. Please try again.",
+      });
+    } finally {
+      setJoiningRoom("");
     }
-
-   await updateDoc(doc(firestore, "users", uid), {
-     activeRoom: roomId,
-   });
-
-    router.push({
-      pathname: "/Room",
-      params: { roomId },
-    });
-  } catch (error) {
-    console.log("Join room error:", error);
-
-    Alert.alert(
-      "Join Failed",
-      error?.message || "Room join nahi ho saka. Dobara try karo.",
-    );
-  } finally {
-    setJoiningRoom("");
-  }
-};
-
+  };
 
   if (loading || authLoading) {
     return <Loader />;
   }
 
- 
-return (
-  <View style={styles.screen}>
-    <Bubbels />
-    <Header />
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerSection}>
-        <Text style={styles.heading}>Online Play</Text>
-        <Text style={styles.subtitle}>
-          Find a room, join the action, and compete with players.
-        </Text>
-      </View>
+  return (
+    <View style={styles.screen}>
+      <Bubbels />
+      <Header />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerSection}>
+          <Text style={styles.heading}>Online Play</Text>
+          <Text style={styles.subtitle}>
+            Find a room, join the action, and compete with players.
+          </Text>
+        </View>
 
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Public Rooms</Text>
-        <Text style={styles.roomCount}>05 ROOMS</Text>
-      </View>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Public Rooms</Text>
+          <Text style={styles.roomCount}>05 ROOMS</Text>
+        </View>
 
-      {ROOM_NAMES.map((roomId, index) => {
-        const room = rooms[roomId];
-        const status = room?.status || "unavailable";
-        const players = room?.players || {};
-        const playerCount = Object.keys(players).length;
-        const maxPlayers = room?.maxPlayers || 5;
-        const isWaiting = status === "waiting" && playerCount < maxPlayers;
-        const isJoining = joiningRoom === roomId;
+        {ROOM_NAMES.map((roomId, index) => {
+          const room = rooms[roomId];
+          const status = room?.status || "unavailable";
+          const players = room?.players || {};
+          const playerCount = Object.keys(players).length;
+          const maxPlayers = room?.maxPlayers || 5;
+          const isWaiting = status === "waiting" && playerCount < maxPlayers;
+          const isJoining = joiningRoom === roomId;
 
-        const statusLabel = !room
-          ? "Unavailable"
-          : status === "active" || status === "playing"
-            ? "In Game"
-            : status === "finished"
-              ? "Finished"
-              : playerCount >= maxPlayers
-                ? "Full"
-                : status === "waiting"
-                  ? "Waiting"
-                  : "Unavailable";
+          const statusLabel = !room
+            ? "Unavailable"
+            : status === "active" || status === "playing"
+              ? "In Game"
+              : status === "finished"
+                ? "Finished"
+                : playerCount >= maxPlayers
+                  ? "Full"
+                  : status === "waiting"
+                    ? "Waiting"
+                    : "Unavailable";
 
-        return (
-          <View key={roomId} style={styles.roomCard}>
-            <View style={styles.cardTop}>
-              <View style={styles.roomInfo}>
-                <View style={styles.roomIcon}>
-                  <Text style={styles.roomNumber}>
-                    {String(index + 1).padStart(2, "0")}
-                  </Text>
+          return (
+            <View key={roomId} style={styles.roomCard}>
+              <View style={styles.cardTop}>
+                <View style={styles.roomInfo}>
+                  <View style={styles.roomIcon}>
+                    <Text style={styles.roomNumber}>
+                      {String(index + 1).padStart(2, "0")}
+                    </Text>
+                  </View>
+
+                  <View style={styles.roomDetails}>
+                    <Text style={styles.roomTitle}>{roomId}</Text>
+                    <Text style={styles.roomSubtitle}>Public Auction Room</Text>
+                  </View>
                 </View>
 
-                <View style={styles.roomDetails}>
-                  <Text style={styles.roomTitle}>{roomId}</Text>
-                  <Text style={styles.roomSubtitle}>Public Auction Room</Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  isWaiting ? styles.waitingBadge : styles.otherBadge,
-                ]}
-              >
                 <View
                   style={[
-                    styles.statusDot,
-                    isWaiting ? styles.waitingDot : styles.otherDot,
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusText,
-                    isWaiting ? styles.waitingText : styles.otherText,
+                    styles.statusBadge,
+                    isWaiting ? styles.waitingBadge : styles.otherBadge,
                   ]}
                 >
-                  {statusLabel}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.cardDivider} />
-
-            <View style={styles.cardBottom}>
-              <View style={styles.playerInfo}>
-                <Text style={styles.playerCount}>
-                  {playerCount}
-                  <Text style={styles.playerTotal}> / {maxPlayers}</Text>
-                </Text>
-                <Text style={styles.playerLabel}>Players joined</Text>
-              </View>
-
-              <View style={styles.playerSlots}>
-                {Array.from({ length: maxPlayers }).map((_, i) => (
                   <View
-                    key={i}
                     style={[
-                      styles.playerSlot,
-                      i < playerCount && styles.filledSlot,
+                      styles.statusDot,
+                      isWaiting ? styles.waitingDot : styles.otherDot,
                     ]}
                   />
-                ))}
+                  <Text
+                    style={[
+                      styles.statusText,
+                      isWaiting ? styles.waitingText : styles.otherText,
+                    ]}
+                  >
+                    {statusLabel}
+                  </Text>
+                </View>
               </View>
 
-              <TouchableOpacity
-                style={[styles.joinButton, !isWaiting && styles.disabledButton]}
-                disabled={!isWaiting || joiningRoom !== ""}
-                onPress={() => handleJoinRoom(roomId)}
-                activeOpacity={0.8}
-              >
-                {isJoining ? (
-                  <ActivityIndicator color="#07111F" />
-                ) : (
-                  <Text style={styles.joinButtonText}>
-                    {isWaiting ? "JOIN" : "—"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        );
-      })}
-    </ScrollView>
-  </View>
-);
+              <View style={styles.cardDivider} />
 
+              <View style={styles.cardBottom}>
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerCount}>
+                    {playerCount}
+                    <Text style={styles.playerTotal}> / {maxPlayers}</Text>
+                  </Text>
+                  <Text style={styles.playerLabel}>Players joined</Text>
+                </View>
+
+                <View style={styles.playerSlots}>
+                  {Array.from({ length: maxPlayers }).map((_, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.playerSlot,
+                        i < playerCount && styles.filledSlot,
+                      ]}
+                    />
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.joinButton,
+                    !isWaiting && styles.disabledButton,
+                  ]}
+                  disabled={!isWaiting || joiningRoom !== ""}
+                  onPress={() => handleJoinRoom(roomId)}
+                  activeOpacity={0.8}
+                >
+                  {isJoining ? (
+                    <ActivityIndicator color="#07111F" />
+                  ) : (
+                    <Text style={styles.joinButtonText}>
+                      {isWaiting ? "JOIN" : "—"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

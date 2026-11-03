@@ -11,8 +11,8 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Instruction from "./components/Instruction";
+import Toast from "react-native-toast-message";
 import { ref, onValue, runTransaction } from "firebase/database";
 import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { db, firestore } from "./utils/Firebase";
@@ -44,17 +44,16 @@ const currentUserId = user?.uid || "";
 
   const handleStartGame = async () => {
     if (players.length < 2) {
-      Alert.alert(
-        "Not Enough Players",
-        "Game start karne ke liye kam az kam 2 players chahiye.",
-      );
+      Toast.show({
+        type: "error",
+        text1: "At least 2 players required to start the game.",
+      });
       return;
     }
 
     try {
       const roomRef = ref(db, `Rooms/${roomId}`);
 
-      // Check room status and host
       const result = await runTransaction(roomRef, (room) => {
         if (!room || room.hostId !== currentUserId) return;
         if (room.status !== "waiting") return;
@@ -68,7 +67,10 @@ const currentUserId = user?.uid || "";
       });
 
       if (!result.committed) {
-        Alert.alert("Unable to Start", "Room start nahi ho saka.");
+        Toast.show({
+          type: "error",
+          text1: "Unable to Start Game",
+        });
         return;
       }
 
@@ -124,7 +126,6 @@ const currentUserId = user?.uid || "";
     } catch (error) {
       console.log("Start Game Error:", error);
 
-      // Allow host to retry if preparation failed
       await runTransaction(ref(db, `Rooms/${roomId}`), (room) => {
         if (room?.hostId === currentUserId && room.status === "preparing") {
           return { ...room, status: "waiting" };
@@ -132,7 +133,10 @@ const currentUserId = user?.uid || "";
         return;
       });
 
-      Alert.alert("Error", error.message);
+      Toast.show({
+        type: "error",
+        text1: "Failed to start game. Please try again.",
+      });
     }
   };
 
@@ -167,6 +171,11 @@ const currentUserId = user?.uid || "";
       },
       (error) => {
         console.log("Room error:", error);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to load room data.",
+        });
         setLoading(false);
       },
     );

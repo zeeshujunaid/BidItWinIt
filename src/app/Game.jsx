@@ -9,7 +9,8 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router"
+import Toast from "react-native-toast-message";
 import { useAuth } from "./context/Authcontext";
 import { ref, onValue, runTransaction } from "firebase/database";
 import { doc, updateDoc } from "firebase/firestore";
@@ -39,6 +40,10 @@ export default function Game() {
         setLoading(false);
       },
       (error) => {
+        Toast.show({
+          type: "error",
+          text1: "Failed to load game data.",
+        });
         console.log("Game listener error:", error);
         setLoading(false);
       },
@@ -119,7 +124,6 @@ export default function Game() {
           (player) => !passed[player.uid],
         );
 
-        // No eligible players left: auction is over
         if (eligiblePlayers.length === 0) {
           return finishAuction(
             currentRoom,
@@ -127,7 +131,6 @@ export default function Game() {
           );
         }
 
-        // After a bid, only the bidder remains eligible
         if (
           action === "bid" &&
           eligiblePlayers.length === 1 &&
@@ -136,7 +139,6 @@ export default function Game() {
           return finishAuction(currentRoom, user.uid);
         }
 
-        // Find the next eligible player in seat order
         const currentIndex = allPlayers.findIndex(
           (player) => player.uid === user.uid,
         );
@@ -166,59 +168,66 @@ export default function Game() {
       });
 
       if (!result.committed) {
-        Alert.alert("Action Failed", "Your turn is no longer active.");
+        Toast.show({
+          type: "error",
+          text1: "Action Failed",
+          text2: "Your turn is no longer active.",
+        });
       }
     } catch (error) {
       console.log("Auction Error:", error);
-      Alert.alert("Error", error.message);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+      });
     } finally {
       setActionLoading(false);
     }
   };
 
 
-  const handleNextRound = async () => {
-    try {
-      const roomRef = ref(db, `Rooms/${roomId}`);
+  // const handleNextRound = async () => {
+  //   try {
+  //     const roomRef = ref(db, `Rooms/${roomId}`);
 
-      await runTransaction(roomRef, (currentRoom) => {
-        if (!currentRoom) return;
-        if (currentRoom.auctionStatus !== "finished") return;
+  //     await runTransaction(roomRef, (currentRoom) => {
+  //       if (!currentRoom) return;
+  //       if (currentRoom.auctionStatus !== "finished") return;
 
-        const nextIndex = (currentRoom.currentItemIndex || 0) + 1;
+  //       const nextIndex = (currentRoom.currentItemIndex || 0) + 1;
 
-        // Check if all items are completed
-        if (nextIndex >= currentRoom.gameItems.length) {
-          return {
-            ...currentRoom,
-            status: "completed",
-            auctionStatus: "finished",
-            activePlayerId: "",
-          };
-        }
+  //       // Check if all items are completed
+  //       if (nextIndex >= currentRoom.gameItems.length) {
+  //         return {
+  //           ...currentRoom,
+  //           status: "completed",
+  //           auctionStatus: "finished",
+  //           activePlayerId: "",
+  //         };
+  //       }
 
-        const sortedPlayers = Object.values(currentRoom.players || {}).sort(
-          (a, b) => a.seatIndex - b.seatIndex,
-        );
+  //       const sortedPlayers = Object.values(currentRoom.players || {}).sort(
+  //         (a, b) => a.seatIndex - b.seatIndex,
+  //       );
 
-        return {
-          ...currentRoom,
-          currentItemIndex: nextIndex,
-          currentRound: nextIndex + 1,
-          currentBidPrice: 0,
-          currentHighBidder: "",
-          activePlayerId: sortedPlayers[0]?.uid || "",
-          passedPlayers: {},
-          auctionStatus: "bidding",
-          winnerId: "",
-          winningBid: 0,
-        };
-      });
-    } catch (error) {
-      console.log("Next Round Error:", error);
-      Alert.alert("Error", error.message);
-    }
-  };
+  //       return {
+  //         ...currentRoom,
+  //         currentItemIndex: nextIndex,
+  //         currentRound: nextIndex + 1,
+  //         currentBidPrice: 0,
+  //         currentHighBidder: "",
+  //         activePlayerId: sortedPlayers[0]?.uid || "",
+  //         passedPlayers: {},
+  //         auctionStatus: "bidding",
+  //         winnerId: "",
+  //         winningBid: 0,
+  //       };
+  //     });
+  //   } catch (error) {
+  //     console.log("Next Round Error:", error);
+  //     Alert.alert("Error", error.message);
+  //   }
+  // };
 
   const handleLeaveRoom = () => {
     Alert.alert("Leave Game", "Are you sure you want to leave?", [
