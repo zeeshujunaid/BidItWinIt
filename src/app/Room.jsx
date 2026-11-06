@@ -13,7 +13,13 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
-import { ref, onValue, runTransaction } from "firebase/database";
+import {
+  ref,
+  onValue,
+  runTransaction,
+  onDisconnect,
+  set,
+} from "firebase/database";
 import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { db, firestore } from "./utils/Firebase";
 import Loader from "./components/Loader";
@@ -30,6 +36,110 @@ const currentUserId = user?.uid || "";
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
+
+
+useEffect(() => {
+  if (!roomId) return;
+
+  const presenceRef = ref(db, `Rooms/${roomId}/presence`);
+  const roomRef = ref(db, `Rooms/${roomId}`);
+
+  const unsubscribe = onValue(presenceRef, async (snapshot) => {
+    const presence = snapshot.val() || {};
+
+    console.log("PRESENCE DATA:", presence);
+
+    const disconnectedPlayers = Object.keys(presence).filter(
+      (uid) => presence[uid] === false,
+    );
+
+    console.log("DISCONNECTED PLAYERS:", disconnectedPlayers);
+
+    for (const disconnectedUID of disconnectedPlayers) {
+      console.log("REMOVING PLAYER:", disconnectedUID);
+      try {
+        const result = await runTransaction(roomRef, (room) => {
+          if (!room || room.status !== "waiting") {
+            return;
+          }
+
+          if (!room.players?.[disconnectedUID]) {
+            return;
+          }
+
+          const updatedPlayers = { ...room.players };
+
+          // Player ko players se remove karo
+          delete updatedPlayers[disconnectedUID];
+
+          // Player ko presence se remove karo
+          const updatedPresence = { ...room.presence };
+
+          delete updatedPresence[disconnectedUID];
+
+          // Remaining players
+          const remainingPlayers = Object.entries(updatedPlayers).sort(
+            ([, a], [, b]) => a.seatIndex - b.seatIndex,
+          );
+
+          room.players = updatedPlayers;
+          room.presence = updatedPresence;
+
+          // Host transfer
+          if (room.hostId === disconnectedUID) {
+            room.hostId = remainingPlayers[0]?.[0] || "";
+          }
+
+          return room;
+        });
+
+        // Transaction successful hone ke baad Firestore update
+        if (result.committed) {
+          await updateDoc(doc(firestore, "users", disconnectedUID), {
+            activeRoom: "",
+          });
+
+          console.log("PLAYER REMOVED:", disconnectedUID);
+          console.log("ACTIVE ROOM CLEARED:", disconnectedUID);
+        }
+      } catch (error) {
+        console.log("PLAYER REMOVAL ERROR:", error);
+      }
+    }
+  });
+
+  return () => {
+    unsubscribe();
+  };
+}, [roomId]);
+
+
+  useEffect(() => {
+    if (!roomId || !user?.uid) return;
+
+    const connectedRef = ref(db, ".info/connected");
+    const presenceRef = ref(db, `Rooms/${roomId}/presence/${user.uid}`);
+
+    const unsubscribe = onValue(connectedRef, async (snapshot) => {
+      if (snapshot.val() === true) {
+        try {
+          // Pehle disconnect action register hoga
+          await onDisconnect(presenceRef).set(false);
+
+          // Phir player online mark hoga
+          await set(presenceRef, true);
+
+          console.log("PLAYER ONLINE:", user.uid);
+        } catch (error) {
+          console.log("Presence Error:", error);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId, user?.uid]);
 
   const getRandomItems = (items, count = 10) => {
     const shuffled = [...items];
@@ -223,6 +333,17 @@ const currentUserId = user?.uid || "";
                 room.hostId = "";
                 room.status = "waiting";
                 delete room.players;
+                delete room.gameItems;
+                delete room.currentItemIndex;
+                delete room.currentRound;
+                delete room.currentBidPrice;
+                delete room.currentHighBidder;
+                delete room.activePlayerId;
+                delete room.passedPlayers;
+                delete room.auctionStatus;
+                delete room.winnerId;
+                delete room.winningBid;
+                delete room.presence 
 
                 return room;
               }
