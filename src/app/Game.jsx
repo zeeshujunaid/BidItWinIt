@@ -1,34 +1,48 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { onValue, ref, runTransaction } from "firebase/database";
-import { doc, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  Alert,
   Image,
   ImageBackground,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import Toast from "react-native-toast-message";
+
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
 import { useAuth } from "./context/Authcontext";
-import { db, firestore } from "./utils/Firebase";
+import { db } from "./utils/Firebase";
 
 const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
 
+// Auction timing
+const AUCTION_DURATION = 15;
+const AUCTION_DURATION_MS = AUCTION_DURATION * 1000;
+
+// Convert values like "1,200" or "$1,200" into numbers
+const parseMoney = (value) => {
+  if (typeof value === "number") return value;
+
+  const parsed = Number(String(value || "").replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export default function Game() {
   const { roomId } = useLocalSearchParams();
-  const router = useRouter();
 
   const [room, setRoom] = useState(null);
-  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  const { user, loading: authLoading } = useAuth();
+
+  // Listen to room data
   useEffect(() => {
     if (!roomId) return;
 
@@ -41,11 +55,13 @@ export default function Game() {
         setLoading(false);
       },
       (error) => {
+        console.log("Game listener error:", error);
+
         Toast.show({
           type: "error",
           text1: "Failed to load game data.",
         });
-        console.log("Game listener error:", error);
+
         setLoading(false);
       },
     );
@@ -53,6 +69,7 @@ export default function Game() {
     return unsubscribe;
   }, [roomId]);
 
+  // Room data
   const players = Object.values(room?.players || {}).sort(
     (a, b) => a.seatIndex - b.seatIndex,
   );
@@ -61,20 +78,242 @@ export default function Game() {
 
   const currentBid = room?.currentBidPrice || 0;
 
-  const activePlayer = players.find(
-    (player) => player.uid === room?.activePlayerId,
-  );
-
-  const isMyTurn = user?.uid === room?.activePlayerId;
-
-  const passedPlayers = room?.passedPlayers || {};
-
   const imageurl = currentItem?.imageurl;
 
+  const winner = players.find((player) => player.uid === room?.winnerId);
+
+  const auctionEndsAt = room?.auctionEndsAt || 0;
+
+  const remainingSeconds = auctionEndsAt
+    ? Math.max(0, Math.ceil((auctionEndsAt - currentTime) / 1000))
+    : AUCTION_DURATION;
+
+  // Countdown stage
+ let auctionStage = "BIDDING";
+
+ if (remainingSeconds <= 10 && remainingSeconds > 7) {
+   auctionStage = "GOING ONCE";
+ } else if (remainingSeconds <= 7 && remainingSeconds > 4) {
+   auctionStage = "GOING TWICE";
+ } else if (remainingSeconds <= 4 && remainingSeconds > 0) {
+   auctionStage = "GOING THRICE";
+ }
+
+  // Reset image error when item changes
   useEffect(() => {
     setImageError(false);
   }, [currentItem?.id, imageurl]);
 
+  // Initialize countdown for a new auction
+  useEffect(() => {
+    if (!roomId || room?.status !== "playing") return;
+    if (room?.auctionStatus !== "bidding") return;
+    if (room?.auctionEndsAt) return;
+
+    const roomRef = ref(db, `Rooms/${roomId}`);
+
+    runTransaction(roomRef, (currentRoom) => {
+      if (!currentRoom) return;
+      if (currentRoom.status !== "playing") return;
+      if (currentRoom.auctionStatus !== "bidding") return;
+
+      // Another client may already have initialized the timer
+      if (currentRoom.auctionEndsAt) return;
+
+      return {
+        ...currentRoom,
+        auctionStartedAt: Date.now(),
+        auctionEndsAt: Date.now() + AUCTION_DURATION_MS,
+      };
+    }).catch((error) => {
+      console.log("Auction timer initialization error:", error);
+    });
+  }, [roomId, room?.status, room?.auctionStatus, room?.auctionEndsAt]);
+
+  // Handle bidding
+  const handleBid = async (amount) => {
+    if (!user?.uid || actionLoading || amount <= 0) return;
+
+    if (room?.auctionStatus !== "bidding") return;
+
+    setActionLoading(true);
+
+    try {
+      const roomRef = ref(db, `Rooms/${roomId}`);
+
+      const result = await runTransaction(roomRef, (currentRoom) => {
+        if (!currentRoom) return;
+        if (currentRoom.status !== "playing") return;
+        if (currentRoom.auctionStatus !== "bidding") return;
+
+        // Do not accept bids after countdown ends
+        if (
+          !currentRoom.auctionEndsAt ||
+          Date.now() >= currentRoom.auctionEndsAt
+        ) {
+          return;
+        }
+
+        const players = { ...(currentRoom.players || {}) };
+
+        const bidder = players[user.uid];
+
+        if (!bidder) return;
+
+        const currentBid = Number(currentRoom.currentBidPrice || 0);
+        const previousBidderId = currentRoom.currentHighBidder || "";
+
+        // Buttons represent bid increments
+        const newBid = currentBid + amount;
+
+        const bidderCoins = Number(bidder.coins || 0);
+
+        // If the same player increases their bid,
+        // only deduct the additional increment.
+        const requiredCoins = previousBidderId === user.uid ? amount : newBid;
+
+        if (bidderCoins < requiredCoins) return;
+
+        // Refund the previous highest bidder
+        if (previousBidderId && previousBidderId !== user.uid) {
+          const previousBidder = players[previousBidderId];
+
+          if (!previousBidder) return;
+
+          previousBidder.coins = Number(previousBidder.coins || 0) + currentBid;
+        }
+
+        // Deduct the correct amount from the new bidder
+        bidder.coins = bidderCoins - requiredCoins;
+
+        return {
+          ...currentRoom,
+          players,
+          currentBidPrice: newBid,
+          currentHighBidder: user.uid,
+
+          // Every new bid resets the countdown
+          auctionStartedAt: Date.now(),
+          auctionEndsAt: Date.now() + AUCTION_DURATION_MS,
+        };
+      });
+
+      if (!result.committed) {
+        Toast.show({
+          type: "error",
+          text1: "Bid Failed",
+          text2: "Insufficient coins or auction has ended.",
+        });
+      } else {
+        Toast.show({
+          type: "success",
+          text1: "Bid Placed!",
+          text2: `Your new bid is $${currentBid + amount}`,
+        });
+      }
+    } catch (error) {
+      console.log("Bid Error:", error);
+
+      Toast.show({
+        type: "error",
+        text1: "Something went wrong",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Countdown and auction settlement
+  useEffect(() => {
+    if (!roomId || room?.status !== "playing") return;
+    if (room?.auctionStatus !== "bidding") return;
+    if (!room?.auctionEndsAt) return;
+
+    const interval = setInterval(async () => {
+      const now = Date.now();
+
+      setCurrentTime(now);
+
+      if (now < room.auctionEndsAt) return;
+
+      try {
+        const roomRef = ref(db, `Rooms/${roomId}`);
+
+        await runTransaction(roomRef, (currentRoom) => {
+          if (!currentRoom) return;
+          if (currentRoom.status !== "playing") return;
+          if (currentRoom.auctionStatus !== "bidding") return;
+
+          if (!currentRoom.auctionEndsAt) return;
+          if (Date.now() < currentRoom.auctionEndsAt) return;
+
+          const players = { ...(currentRoom.players || {}) };
+
+          const winnerId = currentRoom.currentHighBidder || "";
+          const winningBid = Number(currentRoom.currentBidPrice || 0);
+
+          // No player placed a bid
+          if (!winnerId || winningBid <= 0) {
+            return {
+              ...currentRoom,
+              auctionStatus: "finished",
+              resultType: "unsold",
+              winnerId: "",
+              winningBid: 0,
+              actualValue: 0,
+              profit: 0,
+            };
+          }
+
+          const winningPlayer = players[winnerId];
+
+          if (!winningPlayer) return;
+
+          // Actual item value:
+          // Uses value first, then actualValue, then price.
+          const actualValue = parseMoney(
+            currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]?.value ??
+              currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]
+                ?.actualValue ??
+              currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]?.price,
+          );
+
+          // Agreed economy rule:
+          // Winning bid is already deducted.
+          // Credit the winner with actualValue - winningBid.
+          const profit = actualValue - winningBid;
+
+          winningPlayer.coins = Number(winningPlayer.coins || 0) + profit;
+
+          return {
+            ...currentRoom,
+            players,
+            auctionStatus: "finished",
+            resultType: "sold",
+            winnerId,
+            winningBid,
+            actualValue,
+            profit,
+          };
+        });
+      } catch (error) {
+        console.log("Auction settlement error:", error);
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [roomId, room?.status, room?.auctionStatus, room?.auctionEndsAt]);
+
+  // Update local countdown display
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Automatically start next item after result
   useEffect(() => {
     if (room?.status !== "playing") return;
     if (room?.auctionStatus !== "finished") return;
@@ -96,243 +335,130 @@ export default function Game() {
               ...currentRoom,
               status: "completed",
               auctionStatus: "finished",
-              activePlayerId: "",
+              auctionEndsAt: null,
+              auctionStartedAt: null,
             };
           }
-
-          const sortedPlayers = Object.values(currentRoom.players || {}).sort(
-            (a, b) => a.seatIndex - b.seatIndex,
-          );
 
           // Start next auction
           return {
             ...currentRoom,
             currentItemIndex: nextIndex,
             currentRound: nextIndex + 1,
+
             currentBidPrice: 0,
             currentHighBidder: "",
-            activePlayerId: sortedPlayers[0]?.uid || "",
-            passedPlayers: {},
+
             auctionStatus: "bidding",
+            auctionEndsAt: null,
+            auctionStartedAt: null,
+
             winnerId: "",
             winningBid: 0,
+            actualValue: 0,
+            profit: 0,
+            resultType: "",
           };
         });
       } catch (error) {
         console.log("Automatic Next Round Error:", error);
       }
-    }, 3000);
+    }, 6000);
 
     return () => clearTimeout(timer);
-  }, [room?.auctionStatus, room?.status, room?.currentItemIndex, roomId]);
+  }, [roomId, room?.status, room?.auctionStatus, room?.currentItemIndex]);
 
-  const finishAuction = (currentRoom, winnerId) => {
-    return {
-      ...currentRoom,
-      auctionStatus: "finished",
-      activePlayerId: "",
-      winnerId: winnerId || "",
-      winningBid: currentRoom.currentBidPrice || 0,
-    };
-  };
-
-  const handleAuctionAction = async (action, amount = 0) => {
-    if (!user?.uid || actionLoading || !isMyTurn) return;
-
-    if (action !== "bid" && action !== "pass") return;
-    if (action === "bid" && amount <= 0) return;
-
-    setActionLoading(true);
-
-    try {
-      const roomRef = ref(db, `Rooms/${roomId}`);
-
-      const result = await runTransaction(roomRef, (currentRoom) => {
-        if (!currentRoom) return;
-        if (currentRoom.status !== "playing") return;
-        if (currentRoom.auctionStatus === "finished") return;
-        if (currentRoom.activePlayerId !== user.uid) return;
-
-        const allPlayers = Object.values(currentRoom.players || {}).sort(
-          (a, b) => a.seatIndex - b.seatIndex,
-        );
-
-        const passed = { ...(currentRoom.passedPlayers || {}) };
-
-        if (passed[user.uid]) return;
-
-        // 1. Handle BID
-        if (action === "bid") {
-          const newBid = (currentRoom.currentBidPrice || 0) + amount;
-
-          currentRoom.currentBidPrice = newBid;
-          currentRoom.currentHighBidder = user.uid;
-        }
-
-        // 2. Handle NO BID
-        if (action === "pass") {
-          passed[user.uid] = true;
-        }
-
-        currentRoom.passedPlayers = passed;
-
-        // 3. Find all players still participating
-        const eligiblePlayers = allPlayers.filter(
-          (player) => !passed[player.uid],
-        );
-
-        const highBidder = currentRoom.currentHighBidder || "";
-
-        // 4. Find challengers other than the highest bidder
-        const challengers = eligiblePlayers.filter(
-          (player) => player.uid !== highBidder,
-        );
-
-        // 5. No challenger left = auction finished
-        if (highBidder && challengers.length === 0) {
-          return finishAuction(currentRoom, highBidder);
-        }
-
-        // 6. Nobody bid and everyone is out
-        if (!highBidder && eligiblePlayers.length === 0) {
-          return finishAuction(currentRoom, "");
-        }
-
-        // 7. Find current player's position
-        const currentIndex = allPlayers.findIndex(
-          (player) => player.uid === user.uid,
-        );
-
-        let nextPlayer = null;
-
-        // 8. Find next player in circular turn order
-        // Highest bidder is included here.
-        // They get another turn when their turn comes around.
-        for (let i = 1; i <= allPlayers.length; i++) {
-          const nextIndex = (currentIndex + i) % allPlayers.length;
-          const candidate = allPlayers[nextIndex];
-
-          if (candidate && !passed[candidate.uid]) {
-            nextPlayer = candidate;
-            break;
-          }
-        }
-
-        // 9. Safety check
-        if (!nextPlayer) {
-          return finishAuction(currentRoom, highBidder);
-        }
-
-        currentRoom.activePlayerId = nextPlayer.uid;
-
-        return currentRoom;
-      });
-
-      if (!result.committed) {
-        Toast.show({
-          type: "error",
-          text1: "Action Failed",
-          text2: "Your turn is no longer active.",
-        });
-      }
-    } catch (error) {
-      console.log("Auction Error:", error);
-
-      Toast.show({
-        type: "error",
-        text1: "Error",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-
+  // Loading
   if (loading || authLoading || !user || !room) {
     return <Loader />;
   }
 
+  // Game completed
   if (room.status === "completed") {
-    return <LeaveRoom/>;
+    return <LeaveRoom />;
   }
 
   if (!currentItem) {
-    return <LeaveRoom/>;
+    return <LeaveRoom />;
   }
 
-  const winner = players.find((player) => player.uid === room.winnerId);
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>BID IT WIN IT</Text>
+    <View style={styles.container}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>BID IT WIN IT</Text>
+          <Text style={styles.room}>ROOM: {roomId}</Text>
+        </View>
 
-      <View style={styles.topInfo}>
-        <Text style={styles.room}>ROOM: {roomId}</Text>
-        <Text style={styles.round}>
-          ITEM {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
-        </Text>
+        <View style={styles.coinsBox}>
+          <Text style={styles.coinsLabel}>YOUR BALANCE</Text>
+          <Text style={styles.coins}>
+            🪙{" "}
+            {Number(
+              players.find((p) => p.uid === user.uid)?.coins || 0,
+            ).toLocaleString()}
+          </Text>
+        </View>
       </View>
 
-      {/* ITEM IMAGE */}
-      <View style={styles.itemImageBox}>
-        {imageurl && !imageError ? (
-          <Image
-            source={{ uri: imageurl }}
-            style={styles.image}
-            resizeMode="contain"
-            onError={(error) => {
-              console.log("Item image failed:", imageurl, error.nativeEvent);
-              setImageError(true);
-            }}
-          />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Text style={styles.text}>Image not available</Text>
+      {/* ITEM INFO */}
+      <View style={styles.itemCard}>
+        <View style={styles.itemImageBox}>
+          {imageurl && !imageError ? (
+            <Image
+              source={{ uri: imageurl }}
+              style={styles.image}
+              resizeMode="contain"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Text style={styles.text}>No Image</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.itemDetails}>
+          <Text style={styles.itemNumber}>
+            ITEM {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
+          </Text>
+
+          <Text style={styles.itemName} numberOfLines={2}>
+            {currentItem.name}
+          </Text>
+
+          <Text style={styles.description} numberOfLines={3}>
+            {currentItem.description}
+          </Text>
+        </View>
+      </View>
+
+      {/* HIGHEST BID + TIMER */}
+      <View style={styles.auctionInfo}>
+        <View style={styles.bidBox}>
+          <Text style={styles.bidLabel}>HIGHEST BID</Text>
+
+          <Text style={styles.bidPrice}>${currentBid.toLocaleString()}</Text>
+
+          <Text style={styles.bidder} numberOfLines={1}>
+            {players.find((p) => p.uid === room.currentHighBidder)?.name ||
+              "No bids yet"}
+          </Text>
+        </View>
+
+        {room.auctionStatus === "bidding" && (
+          <View style={styles.timerBox}>
+            <Text style={styles.timerStage}>
+              {!room.auctionEndsAt ? "GET READY" : auctionStage}
+            </Text>
+
+            <Text style={styles.timer}>{remainingSeconds}s</Text>
           </View>
         )}
       </View>
 
-      {/* ITEM DETAILS */}
-      <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>{currentItem.name}</Text>
-        <Text style={styles.description}>{currentItem.description}</Text>
-      </View>
-
-      {/* HIGHEST BID */}
-      <View style={styles.bidBox}>
-        <View
-          style={{
-            alignItems: "center",
-            flexDirection: "row",
-            justifyContent: "center",
-          }}
-        >
-          <Text style={styles.bidLabel}>HIGHEST BID</Text>
-          <Text style={styles.bidder}>
-            {players.find((player) => player.uid === room.currentHighBidder)
-              ?.name || "No bids yet"}
-          </Text>
-        </View>
-        <Text style={styles.bidPrice}>${currentBid}</Text>
-      </View>
-
-      {/* TURN STATUS */}
-      {/* <View style={styles.turnBox}>
-      <Text style={styles.turnText}>
-        {room.auctionStatus === "finished"
-          ? winner
-            ? `WINNER: ${winner.name}`
-            : "ITEM UNSOLD"
-          : activePlayer
-            ? `${activePlayer.name}'S TURN`
-            : "WAITING..."}
-      </Text>
-    </View> */}
-
-      {/* CHARACTERS AND TABLE IMAGE */}
-      {/* CHARACTERS AND PLAYER PROFILES */}
+      {/* PLAYER TABLE */}
       <ImageBackground
         source={require("../../assets/images/chracter/waitingchracter.png")}
         style={styles.characterTable}
@@ -347,19 +473,18 @@ export default function Game() {
             player?.profilePic ||
             player?.photoUrl;
 
-          const isTurn = player?.uid === room.activePlayerId;
+          const isHighestBidder = player?.uid === room.currentHighBidder;
 
           return (
             <View
               key={seatIndex}
               style={[styles.characterSeat, styles[`seat${seatIndex + 1}`]]}
             >
-              {/* PROFILE IMAGE */}
               <View
                 style={[
                   styles.profileBorder,
                   player && styles.activeProfile,
-                  isTurn && styles.turnProfile,
+                  isHighestBidder && styles.highestBidderProfile,
                 ]}
               >
                 {avatar ? (
@@ -371,7 +496,6 @@ export default function Game() {
                 )}
               </View>
 
-              {/* PLAYER NAME */}
               {player && (
                 <View style={styles.nameTag}>
                   <Text style={styles.characterName} numberOfLines={1}>
@@ -380,143 +504,180 @@ export default function Game() {
                 </View>
               )}
 
-              {/* TURN INDICATOR */}
-              {isTurn && room.auctionStatus !== "finished" && (
-                <View style={styles.characterTurnBadge}>
-                  <Text style={styles.characterTurnText}>YOUR TURN</Text>
-                </View>
-              )}
-
-              {/* PASSED */}
-              {passedPlayers[player?.uid] && (
-                <Text style={styles.passedBadge}>PASSED</Text>
+              {isHighestBidder && room.auctionStatus === "bidding" && (
+                <Text style={styles.highestBadge}>LEADING</Text>
               )}
             </View>
           );
         })}
       </ImageBackground>
 
-      {/* RESULT */}
-      {room.auctionStatus === "finished" ? (
-        <View style={styles.resultBox}>
-          <Text style={styles.resultTitle}>
-            {winner ? "ITEM WON!" : "NO ONE BID"}
-          </Text>
+      {/* BIDDING BUTTONS */}
+      {room.auctionStatus === "bidding" && (
+        <View style={styles.biddingSection}>
+          <Text style={styles.buttonHeading}>MAKE YOUR MOVE</Text>
 
-          <Text style={styles.text}>
-            {winner
-              ? `${winner.name} won this item for $${room.winningBid}`
-              : "This item remained unsold."}
-          </Text>
+          <View style={styles.buttons}>
+            {BID_AMOUNTS.map((amount) => (
+              <TouchableOpacity
+                key={amount}
+                style={[
+                  styles.bidButton,
+                  (actionLoading || !room.auctionEndsAt) &&
+                    styles.disabledButton,
+                ]}
+                onPress={() => handleBid(amount)}
+                disabled={actionLoading || !room.auctionEndsAt}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.buttonText}>
+                  +${amount.toLocaleString()}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.bidHint}>Every new bid resets the countdown</Text>
         </View>
-      ) : (
-        <>
-          <Text style={styles.buttonHeading}>
-            {isMyTurn ? "PLACE YOUR BID" : "WAITING FOR PLAYER"}
-          </Text>
-
-          {isMyTurn ? (
-            <>
-              <View style={styles.buttons}>
-                {BID_AMOUNTS.map((amount) => (
-                  <TouchableOpacity
-                    key={amount}
-                    style={[
-                      styles.bidButton,
-                      actionLoading && styles.disabledButton,
-                    ]}
-                    onPress={() => handleAuctionAction("bid", amount)}
-                    disabled={actionLoading}
-                  >
-                    <Text style={styles.buttonText}>${amount}</Text>
-                  </TouchableOpacity>
-                ))}
-
-                <TouchableOpacity
-                  style={[
-                    styles.bidButton,
-                    styles.noBidButton,
-                    actionLoading && styles.disabledButton,
-                  ]}
-                  onPress={() => handleAuctionAction("pass")}
-                  disabled={actionLoading}
-                >
-                  <Text style={styles.buttonText}>NO BID</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <Text style={styles.waitingText}>
-              {activePlayer?.name || "Another player"} is making a decision...
-            </Text>
-          )}
-        </>
       )}
 
-      {/* PLAYER STATUS */}
-      {/* <View style={styles.playersSection}>
-      <Text style={styles.playersHeading}>PLAYERS</Text>
+      {/* RESULT MODAL */}
+      {room.auctionStatus === "finished" && (
+        <View style={styles.resultOverlay}>
+          <View style={styles.resultBox}>
+            {winner ? (
+              <>
+                <Text style={styles.resultEmoji}>🏆</Text>
+                <Text style={styles.resultTitle}>ITEM SOLD!</Text>
+                <Text style={styles.resultSubtitle}>
+                  {winner.name} won this item!
+                </Text>
 
-      {players.map((player) => (
-        <View key={player.uid} style={styles.playerCard}>
-          <Text style={styles.playerName}>
-            {player.name}
-            {player.uid === room.activePlayerId ? "  • YOUR TURN" : ""}
-            {passedPlayers[player.uid] ? "  • PASSED" : ""}
-            {player.uid === room.currentHighBidder ? "  • HIGHEST BID" : ""}
-          </Text>
+                <View style={styles.resultDetails}>
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>Winning Bid</Text>
+                    <Text style={styles.resultValue}>
+                      ${Number(room.winningBid || 0).toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>Actual Value</Text>
+                    <Text style={styles.resultValue}>
+                      ${Number(room.actualValue || 0).toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>
+                      {Number(room.profit || 0) >= 0 ? "Profit" : "Loss"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.profitText,
+                        Number(room.profit || 0) < 0 && styles.lossText,
+                      ]}
+                    >
+                      {Number(room.profit || 0) < 0 ? "-" : "+"}$
+                      {Math.abs(Number(room.profit || 0)).toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>New Balance</Text>
+                    <Text style={styles.resultValue}>
+                      ${Number(winner.coins || 0).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.resultEmoji}>📦</Text>
+                <Text style={styles.unsoldTitle}>ITEM UNSOLD</Text>
+                <Text style={styles.resultSubtitle}>Nobody placed a bid!</Text>
+              </>
+            )}
+
+            <Text style={styles.nextItemText}>Next item loading...</Text>
+          </View>
         </View>
-      ))}
-    </View> */}
-    </ScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: "#07111F",
-    paddingHorizontal: 18,
-    paddingTop: 45,
-    paddingBottom: 30,
+    paddingHorizontal: 15,
+    paddingTop: 42,
+    paddingBottom: 12,
+    justifyContent: "space-between",
+  },
+
+  header: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
 
   title: {
     color: "#FFFFFF",
-    fontSize: 25,
+    fontSize: 21,
     fontWeight: "900",
-    letterSpacing: 2,
-  },
-
-  topInfo: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 12,
-    marginBottom: 18,
+    letterSpacing: 1.5,
   },
 
   room: {
     color: "#38BDF8",
-    fontSize: 12,
+    fontSize: 10,
+    fontWeight: "bold",
+    marginTop: 4,
+  },
+
+  coinsBox: {
+    backgroundColor: "#123B35",
+    borderWidth: 1,
+    borderColor: "#46E6A5",
+    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    alignItems: "center",
+  },
+
+  coinsLabel: {
+    color: "#A8B7CA",
+    fontSize: 8,
     fontWeight: "bold",
   },
 
-  round: {
-    color: "#FACC15",
-    fontSize: 12,
-    fontWeight: "bold",
+  coins: {
+    color: "#46E6A5",
+    fontSize: 14,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+
+  itemCard: {
+    flexDirection: "row",
+    width: "100%",
+    height: 115,
+    backgroundColor: "#0D1B2D",
+    borderWidth: 1,
+    borderColor: "#24415B",
+    borderRadius: 10,
+    padding: 9,
+    alignItems: "center",
   },
 
   itemImageBox: {
-    width: "100%",
-    height: 150,
-    backgroundColor: "#0D1B2D",
-    borderWidth: 1,
-    borderColor: "#38BDF8",
-    borderRadius: 5,
-    padding: 8,
+    width: "36%",
+    height: "100%",
+    backgroundColor: "#122238",
+    borderRadius: 7,
+    padding: 5,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -528,135 +689,121 @@ const styles = StyleSheet.create({
 
   imagePlaceholder: {
     flex: 1,
-    width: "100%",
-    backgroundColor: "#122238",
     justifyContent: "center",
     alignItems: "center",
   },
 
   itemDetails: {
-    width: "85%",
-    borderWidth: 1,
-    height: 90,
-    borderColor: "#334B68",
-    padding: 8,
-    alignItems: "center",
-    marginTop: 5,
-    backgroundColor: "#0D1B2D",
+    flex: 1,
+    paddingLeft: 12,
+    justifyContent: "center",
+  },
+
+  itemNumber: {
+    color: "#38BDF8",
+    fontSize: 9,
+    fontWeight: "bold",
+    marginBottom: 5,
   },
 
   itemName: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "900",
-    textAlign: "center",
   },
 
   description: {
     color: "#A8B7CA",
     fontSize: 10,
-    textAlign: "center",
     marginTop: 5,
+    lineHeight: 14,
   },
 
-  feature: {
-    color: "#FACC15",
-    fontSize: 11,
-    textAlign: "center",
-    marginTop: 5,
+  auctionInfo: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+    height: 82,
   },
 
   bidBox: {
-    width: "65%",
-    marginTop: 20,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
+    flex: 1,
     backgroundColor: "#0D1B2D",
     borderWidth: 1,
     borderColor: "#38BDF8",
-    borderRadius: 5,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 5,
   },
 
   bidLabel: {
     color: "#A8B7CA",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "bold",
   },
 
   bidPrice: {
     color: "#FACC15",
-    fontSize: 27,
+    fontSize: 23,
     fontWeight: "900",
     marginTop: 2,
   },
 
   bidder: {
     color: "#FFFFFF",
-    fontSize: 20,
+    fontSize: 10,
     fontWeight: "bold",
-    marginLeft: 5,
+    marginTop: 2,
+    maxWidth: "95%",
   },
 
-  turnBox: {
-    width: "100%",
+  timerBox: {
+    width: "34%",
     backgroundColor: "#102A40",
     borderWidth: 1,
-    borderColor: "#38BDF8",
-    padding: 10,
+    borderColor: "#FACC15",
+    borderRadius: 9,
     alignItems: "center",
-    marginTop: 12,
-    borderRadius: 5,
+    justifyContent: "center",
   },
 
-  turnText: {
-    color: "#38BDF8",
-    fontSize: 14,
+  timerStage: {
+    color: "#FACC15",
+    fontSize: 10,
     fontWeight: "900",
+  },
+
+  timer: {
+    color: "#FFFFFF",
+    fontSize: 27,
+    fontWeight: "900",
+    marginTop: 2,
   },
 
   characterTable: {
     width: "100%",
-    height: 180,
+    height: 165,
     position: "relative",
-    marginTop: 15,
+    marginTop: 0,
   },
 
   characterSeat: {
     position: "absolute",
     alignItems: "center",
-    width: 65,
+    width: 60,
   },
 
-  seat1: {
-    left: "1%",
-    top: 28,
-  },
-
-  seat2: {
-    left: "21%",
-    top: 28,
-  },
-
-  seat3: {
-    left: "41%",
-    top: 28,
-  },
-
-  seat4: {
-    left: "61%",
-    top: 28,
-  },
-
-  seat5: {
-    left: "81%",
-    top: 28,
-  },
+  seat1: { left: "0%", top: 23 },
+  seat2: { left: "20%", top: 23 },
+  seat3: { left: "40%", top: 23 },
+  seat4: { left: "60%", top: 23 },
+  seat5: { left: "80%", top: 23 },
 
   profileBorder: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 2,
     borderColor: "#64748B",
     padding: 2,
@@ -668,7 +815,7 @@ const styles = StyleSheet.create({
     borderColor: "#38BDF8",
   },
 
-  turnProfile: {
+  highestBidderProfile: {
     borderColor: "#FACC15",
     borderWidth: 3,
   },
@@ -694,11 +841,11 @@ const styles = StyleSheet.create({
 
   nameTag: {
     backgroundColor: "#07111F",
-    paddingHorizontal: 5,
+    paddingHorizontal: 4,
     paddingVertical: 3,
     borderRadius: 4,
     marginTop: 3,
-    maxWidth: 65,
+    maxWidth: 60,
   },
 
   characterName: {
@@ -707,37 +854,23 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  characterTurnBadge: {
-    backgroundColor: "#FACC15",
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    borderRadius: 4,
+  highestBadge: {
+    color: "#FACC15",
+    fontSize: 8,
+    fontWeight: "900",
     marginTop: 3,
   },
 
-  characterTurnText: {
-    color: "#07111F",
-    fontSize: 8,
-    fontWeight: "900",
+  biddingSection: {
+    width: "100%",
+    alignItems: "center",
   },
 
-  hostBadge: {
-    color: "#FACC15",
-    fontSize: 8,
-    fontWeight: "bold",
-  },
-
-  passedBadge: {
-    color: "#F0445E",
-    fontSize: 8,
-    fontWeight: "bold",
-  },
   buttonHeading: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
-    marginTop: 18,
-    marginBottom: 12,
+    marginBottom: 10,
     letterSpacing: 1,
   },
 
@@ -746,39 +879,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    rowGap: 10,
+    gap: 9,
   },
 
   bidButton: {
     width: "31.5%",
-    minHeight: 48,
-    backgroundColor: "#102A40",
+    minHeight: 43,
+    backgroundColor: "#12304A",
     borderWidth: 1,
     borderColor: "#38BDF8",
-    borderRadius: 4,
+    borderRadius: 7,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  noBidButton: {
-    backgroundColor: "#8D2438",
-    borderColor: "#F0445E",
-  },
-
   disabledButton: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
 
   buttonText: {
     color: "#FFFFFF",
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 13,
   },
 
-  waitingText: {
+  bidHint: {
     color: "#A8B7CA",
+    fontSize: 9,
     marginTop: 8,
-    textAlign: "center",
+  },
+
+  resultOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 22,
+    zIndex: 10,
+    elevation: 10,
   },
 
   resultBox: {
@@ -786,45 +928,76 @@ const styles = StyleSheet.create({
     backgroundColor: "#102A40",
     borderWidth: 1,
     borderColor: "#46E6A5",
-    padding: 16,
-    borderRadius: 5,
-    marginTop: 15,
+    borderRadius: 16,
+    padding: 20,
     alignItems: "center",
+  },
+
+  resultEmoji: {
+    fontSize: 38,
+    marginBottom: 8,
   },
 
   resultTitle: {
     color: "#46E6A5",
-    fontSize: 21,
+    fontSize: 24,
     fontWeight: "900",
-    marginBottom: 8,
   },
 
-  playersSection: {
-    width: "100%",
-    marginTop: 20,
-  },
-
-  playersHeading: {
-    color: "#38BDF8",
-    fontSize: 14,
+  unsoldTitle: {
+    color: "#FACC15",
+    fontSize: 24,
     fontWeight: "900",
-    marginBottom: 10,
   },
 
-  playerCard: {
+  resultSubtitle: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    marginTop: 7,
+    textAlign: "center",
+  },
+
+  resultDetails: {
     width: "100%",
     backgroundColor: "#0D1B2D",
-    borderWidth: 1,
-    borderColor: "#263C54",
-    padding: 10,
-    marginBottom: 6,
-    borderRadius: 4,
+    borderRadius: 9,
+    padding: 12,
+    marginTop: 18,
+    gap: 12,
   },
 
-  playerName: {
-    color: "#FFFFFF",
+  resultRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  resultLabel: {
+    color: "#A8B7CA",
     fontSize: 12,
+  },
+
+  resultValue: {
+    color: "#FFFFFF",
+    fontSize: 13,
     fontWeight: "bold",
+  },
+
+  profitText: {
+    color: "#46E6A5",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  lossText: {
+    color: "#F0445E",
+  },
+
+  nextItemText: {
+    color: "#38BDF8",
+    fontSize: 11,
+    fontWeight: "bold",
+    marginTop: 18,
   },
 
   text: {

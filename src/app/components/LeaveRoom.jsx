@@ -74,6 +74,9 @@ export default function LeaveRoom() {
                 delete updatedRoom.phaseEndsAt;
                 delete updatedRoom.winnerId;
                 delete updatedRoom.winningBid;
+                delete updatedRoom.actualValue;
+                delete updatedRoom.profit;
+                delete updatedRoom.resultType;
 
                 return updatedRoom;
               }
