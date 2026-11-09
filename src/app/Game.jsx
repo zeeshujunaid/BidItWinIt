@@ -1,21 +1,22 @@
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  Image,
-  TouchableOpacity,
-  StyleSheet,
-  ImageBackground,
-  Alert,
-  ScrollView,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router"
-import Toast from "react-native-toast-message";
-import { useAuth } from "./context/Authcontext";
-import { ref, onValue, runTransaction } from "firebase/database";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { onValue, ref, runTransaction } from "firebase/database";
 import { doc, updateDoc } from "firebase/firestore";
-import { db, firestore } from "./utils/Firebase";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Image,
+  ImageBackground,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Toast from "react-native-toast-message";
+import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
+import { useAuth } from "./context/Authcontext";
+import { db, firestore } from "./utils/Firebase";
 
 const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
 
@@ -24,7 +25,7 @@ export default function Game() {
   const router = useRouter();
 
   const [room, setRoom] = useState(null);
- const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -68,12 +69,62 @@ export default function Game() {
 
   const passedPlayers = room?.passedPlayers || {};
 
-  const imageurl =
-    currentItem?.imageurl;
+  const imageurl = currentItem?.imageurl;
 
   useEffect(() => {
     setImageError(false);
   }, [currentItem?.id, imageurl]);
+
+  useEffect(() => {
+    if (room?.status !== "playing") return;
+    if (room?.auctionStatus !== "finished") return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const roomRef = ref(db, `Rooms/${roomId}`);
+
+        await runTransaction(roomRef, (currentRoom) => {
+          if (!currentRoom) return;
+          if (currentRoom.status !== "playing") return;
+          if (currentRoom.auctionStatus !== "finished") return;
+
+          const nextIndex = (currentRoom.currentItemIndex || 0) + 1;
+
+          // All items completed
+          if (nextIndex >= (currentRoom.gameItems || []).length) {
+            return {
+              ...currentRoom,
+              status: "completed",
+              auctionStatus: "finished",
+              activePlayerId: "",
+            };
+          }
+
+          const sortedPlayers = Object.values(currentRoom.players || {}).sort(
+            (a, b) => a.seatIndex - b.seatIndex,
+          );
+
+          // Start next auction
+          return {
+            ...currentRoom,
+            currentItemIndex: nextIndex,
+            currentRound: nextIndex + 1,
+            currentBidPrice: 0,
+            currentHighBidder: "",
+            activePlayerId: sortedPlayers[0]?.uid || "",
+            passedPlayers: {},
+            auctionStatus: "bidding",
+            winnerId: "",
+            winningBid: 0,
+          };
+        });
+      } catch (error) {
+        console.log("Automatic Next Round Error:", error);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [room?.auctionStatus, room?.status, room?.currentItemIndex, roomId]);
 
   const finishAuction = (currentRoom, winnerId) => {
     return {
@@ -87,6 +138,9 @@ export default function Game() {
 
   const handleAuctionAction = async (action, amount = 0) => {
     if (!user?.uid || actionLoading || !isMyTurn) return;
+
+    if (action !== "bid" && action !== "pass") return;
+    if (action === "bid" && amount <= 0) return;
 
     setActionLoading(true);
 
@@ -107,6 +161,7 @@ export default function Game() {
 
         if (passed[user.uid]) return;
 
+        // 1. Handle BID
         if (action === "bid") {
           const newBid = (currentRoom.currentBidPrice || 0) + amount;
 
@@ -114,37 +169,45 @@ export default function Game() {
           currentRoom.currentHighBidder = user.uid;
         }
 
+        // 2. Handle NO BID
         if (action === "pass") {
           passed[user.uid] = true;
         }
 
         currentRoom.passedPlayers = passed;
 
+        // 3. Find all players still participating
         const eligiblePlayers = allPlayers.filter(
           (player) => !passed[player.uid],
         );
 
-        if (eligiblePlayers.length === 0) {
-          return finishAuction(
-            currentRoom,
-            currentRoom.currentHighBidder || "",
-          );
+        const highBidder = currentRoom.currentHighBidder || "";
+
+        // 4. Find challengers other than the highest bidder
+        const challengers = eligiblePlayers.filter(
+          (player) => player.uid !== highBidder,
+        );
+
+        // 5. No challenger left = auction finished
+        if (highBidder && challengers.length === 0) {
+          return finishAuction(currentRoom, highBidder);
         }
 
-        if (
-          action === "bid" &&
-          eligiblePlayers.length === 1 &&
-          eligiblePlayers[0].uid === user.uid
-        ) {
-          return finishAuction(currentRoom, user.uid);
+        // 6. Nobody bid and everyone is out
+        if (!highBidder && eligiblePlayers.length === 0) {
+          return finishAuction(currentRoom, "");
         }
 
+        // 7. Find current player's position
         const currentIndex = allPlayers.findIndex(
           (player) => player.uid === user.uid,
         );
 
         let nextPlayer = null;
 
+        // 8. Find next player in circular turn order
+        // Highest bidder is included here.
+        // They get another turn when their turn comes around.
         for (let i = 1; i <= allPlayers.length; i++) {
           const nextIndex = (currentIndex + i) % allPlayers.length;
           const candidate = allPlayers[nextIndex];
@@ -155,11 +218,9 @@ export default function Game() {
           }
         }
 
+        // 9. Safety check
         if (!nextPlayer) {
-          return finishAuction(
-            currentRoom,
-            currentRoom.currentHighBidder || "",
-          );
+          return finishAuction(currentRoom, highBidder);
         }
 
         currentRoom.activePlayerId = nextPlayer.uid;
@@ -176,6 +237,7 @@ export default function Game() {
       }
     } catch (error) {
       console.log("Auction Error:", error);
+
       Toast.show({
         type: "error",
         text1: "Error",
@@ -186,203 +248,78 @@ export default function Game() {
   };
 
 
-  // const handleNextRound = async () => {
-  //   try {
-  //     const roomRef = ref(db, `Rooms/${roomId}`);
-
-  //     await runTransaction(roomRef, (currentRoom) => {
-  //       if (!currentRoom) return;
-  //       if (currentRoom.auctionStatus !== "finished") return;
-
-  //       const nextIndex = (currentRoom.currentItemIndex || 0) + 1;
-
-  //       // Check if all items are completed
-  //       if (nextIndex >= currentRoom.gameItems.length) {
-  //         return {
-  //           ...currentRoom,
-  //           status: "completed",
-  //           auctionStatus: "finished",
-  //           activePlayerId: "",
-  //         };
-  //       }
-
-  //       const sortedPlayers = Object.values(currentRoom.players || {}).sort(
-  //         (a, b) => a.seatIndex - b.seatIndex,
-  //       );
-
-  //       return {
-  //         ...currentRoom,
-  //         currentItemIndex: nextIndex,
-  //         currentRound: nextIndex + 1,
-  //         currentBidPrice: 0,
-  //         currentHighBidder: "",
-  //         activePlayerId: sortedPlayers[0]?.uid || "",
-  //         passedPlayers: {},
-  //         auctionStatus: "bidding",
-  //         winnerId: "",
-  //         winningBid: 0,
-  //       };
-  //     });
-  //   } catch (error) {
-  //     console.log("Next Round Error:", error);
-  //     Alert.alert("Error", error.message);
-  //   }
-  // };
-
-  const handleLeaveRoom = () => {
-    Alert.alert("Leave Game", "Are you sure you want to leave?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const roomRef = ref(db, `Rooms/${roomId}`);
-
-            const result = await runTransaction(roomRef, (currentRoom) => {
-              if (!currentRoom?.players || !currentRoom.players[user.uid]) {
-                return;
-              }
-
-              const updatedPlayers = { ...currentRoom.players };
-              delete updatedPlayers[user.uid];
-
-              const remainingPlayers = Object.values(updatedPlayers).sort(
-                (a, b) => a.seatIndex - b.seatIndex,
-              );
-
-              currentRoom.players = updatedPlayers;
-
-              if (remainingPlayers.length === 0) {
-                currentRoom.hostId = "";
-                currentRoom.status = "waiting";
-                currentRoom.activePlayerId = "";
-                currentRoom.auctionStatus = "finished";
-                return currentRoom;
-              }
-
-              if (currentRoom.hostId === user.uid) {
-                currentRoom.hostId = remainingPlayers[0].uid;
-              }
-
-              if (currentRoom.activePlayerId === user.uid) {
-                const nextPlayer = remainingPlayers.find(
-                  (player) => !currentRoom.passedPlayers?.[player.uid],
-                );
-
-                if (nextPlayer) {
-                  currentRoom.activePlayerId = nextPlayer.uid;
-                } else {
-                  currentRoom.activePlayerId = "";
-                  currentRoom.auctionStatus = "finished";
-                  currentRoom.winnerId = currentRoom.currentHighBidder || "";
-                }
-              }
-
-              return currentRoom;
-            });
-
-            if (!result.committed) {
-              throw new Error("Could not leave the room.");
-            }
-
-            await updateDoc(doc(firestore, "users", user.uid), {
-              activeRoom: "",
-            });
-
-
-            router.replace("/(drawer)/Onlineplay");
-          } catch (error) {
-            console.log("Leave Game Error:", error);
-            Alert.alert("Leave Failed", error.message);
-          }
-        },
-      },
-    ]);
-  };
-
- if (loading || authLoading || !user || !room) {
-   return <Loader/>;
- }
+  if (loading || authLoading || !user || !room) {
+    return <Loader />;
+  }
 
   if (room.status === "completed") {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.title}>Game Completed!</Text>
-        <Text style={styles.text}>All items have been auctioned.</Text>
-
-        <TouchableOpacity style={styles.leaveButton} onPress={handleLeaveRoom}>
-          <Text style={styles.buttonText}>Leave Game</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <LeaveRoom/>;
   }
 
   if (!currentItem) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.text}>No game item found.</Text>
-        <TouchableOpacity style={styles.leaveButton} onPress={handleLeaveRoom}>
-          <Text style={styles.buttonText}>Leave Room</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <LeaveRoom/>;
   }
 
   const winner = players.find((player) => player.uid === room.winnerId);
-return (
-  <ScrollView
-    contentContainerStyle={styles.container}
-    showsVerticalScrollIndicator={false}
-  >
-    <Text style={styles.title}>BID IT WIN IT</Text>
+  return (
+    <ScrollView
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.title}>BID IT WIN IT</Text>
 
-    <View style={styles.topInfo}>
-      <Text style={styles.room}>ROOM: {roomId}</Text>
-      <Text style={styles.round}>
-        ITEM {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
-      </Text>
-    </View>
-
-    {/* ITEM IMAGE */}
-    <View style={styles.itemImageBox}>
-      {imageurl && !imageError ? (
-        <Image
-          source={{ uri: imageurl }}
-          style={styles.image}
-          resizeMode="contain"
-          onError={(error) => {
-            console.log("Item image failed:", imageurl, error.nativeEvent);
-            setImageError(true);
-          }}
-        />
-      ) : (
-        <View style={styles.imagePlaceholder}>
-          <Text style={styles.text}>Image not available</Text>
-        </View>
-      )}
-    </View>
-
-    {/* ITEM DETAILS */}
-    <View style={styles.itemDetails}>
-      <Text style={styles.itemName}>{currentItem.name}</Text>
-      <Text style={styles.description}>{currentItem.description}</Text>
-    </View>
-
-    {/* HIGHEST BID */}
-    <View style={styles.bidBox}>
-      <View style={{ alignItems: "center",flexDirection: "row", justifyContent: "center" }}>
-      <Text style={styles.bidLabel}>HIGHEST BID</Text>
-      <Text style={styles.bidder}>
-        {players.find((player) => player.uid === room.currentHighBidder)
-          ?.name || "No bids yet"}
-      </Text>
+      <View style={styles.topInfo}>
+        <Text style={styles.room}>ROOM: {roomId}</Text>
+        <Text style={styles.round}>
+          ITEM {(room.currentItemIndex || 0) + 1} / {room.gameItems.length}
+        </Text>
       </View>
-      <Text style={styles.bidPrice}>${currentBid}</Text>
-    </View>
 
-    {/* TURN STATUS */}
-    {/* <View style={styles.turnBox}>
+      {/* ITEM IMAGE */}
+      <View style={styles.itemImageBox}>
+        {imageurl && !imageError ? (
+          <Image
+            source={{ uri: imageurl }}
+            style={styles.image}
+            resizeMode="contain"
+            onError={(error) => {
+              console.log("Item image failed:", imageurl, error.nativeEvent);
+              setImageError(true);
+            }}
+          />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Text style={styles.text}>Image not available</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ITEM DETAILS */}
+      <View style={styles.itemDetails}>
+        <Text style={styles.itemName}>{currentItem.name}</Text>
+        <Text style={styles.description}>{currentItem.description}</Text>
+      </View>
+
+      {/* HIGHEST BID */}
+      <View style={styles.bidBox}>
+        <View
+          style={{
+            alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={styles.bidLabel}>HIGHEST BID</Text>
+          <Text style={styles.bidder}>
+            {players.find((player) => player.uid === room.currentHighBidder)
+              ?.name || "No bids yet"}
+          </Text>
+        </View>
+        <Text style={styles.bidPrice}>${currentBid}</Text>
+      </View>
+
+      {/* TURN STATUS */}
+      {/* <View style={styles.turnBox}>
       <Text style={styles.turnText}>
         {room.auctionStatus === "finished"
           ? winner
@@ -394,130 +331,130 @@ return (
       </Text>
     </View> */}
 
-    {/* CHARACTERS AND TABLE IMAGE */}
-    {/* CHARACTERS AND PLAYER PROFILES */}
-    <ImageBackground
-      source={require("../../assets/images/chracter/waitingchracter.png")}
-      style={styles.characterTable}
-      resizeMode="stretch"
-    >
-      {[0, 1, 2, 3, 4].map((seatIndex) => {
-        const player = players.find((p) => Number(p.seatIndex) === seatIndex);
+      {/* CHARACTERS AND TABLE IMAGE */}
+      {/* CHARACTERS AND PLAYER PROFILES */}
+      <ImageBackground
+        source={require("../../assets/images/chracter/waitingchracter.png")}
+        style={styles.characterTable}
+        resizeMode="stretch"
+      >
+        {[0, 1, 2, 3, 4].map((seatIndex) => {
+          const player = players.find((p) => Number(p.seatIndex) === seatIndex);
 
-        const avatar =
-          player?.photoURL ||
-          player?.avatarUrl ||
-          player?.profilePic ||
-          player?.photoUrl;
+          const avatar =
+            player?.photoURL ||
+            player?.avatarUrl ||
+            player?.profilePic ||
+            player?.photoUrl;
 
-        const isTurn = player?.uid === room.activePlayerId;
+          const isTurn = player?.uid === room.activePlayerId;
 
-        return (
-          <View
-            key={seatIndex}
-            style={[styles.characterSeat, styles[`seat${seatIndex + 1}`]]}
-          >
-            {/* PROFILE IMAGE */}
+          return (
             <View
-              style={[
-                styles.profileBorder,
-                player && styles.activeProfile,
-                isTurn && styles.turnProfile,
-              ]}
+              key={seatIndex}
+              style={[styles.characterSeat, styles[`seat${seatIndex + 1}`]]}
             >
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.profileImage} />
-              ) : (
-                <View style={styles.emptyAvatar}>
-                  <Text style={styles.plus}>+</Text>
+              {/* PROFILE IMAGE */}
+              <View
+                style={[
+                  styles.profileBorder,
+                  player && styles.activeProfile,
+                  isTurn && styles.turnProfile,
+                ]}
+              >
+                {avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.profileImage} />
+                ) : (
+                  <View style={styles.emptyAvatar}>
+                    <Text style={styles.plus}>+</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* PLAYER NAME */}
+              {player && (
+                <View style={styles.nameTag}>
+                  <Text style={styles.characterName} numberOfLines={1}>
+                    {player.name || "Player"}
+                  </Text>
                 </View>
               )}
+
+              {/* TURN INDICATOR */}
+              {isTurn && room.auctionStatus !== "finished" && (
+                <View style={styles.characterTurnBadge}>
+                  <Text style={styles.characterTurnText}>YOUR TURN</Text>
+                </View>
+              )}
+
+              {/* PASSED */}
+              {passedPlayers[player?.uid] && (
+                <Text style={styles.passedBadge}>PASSED</Text>
+              )}
             </View>
+          );
+        })}
+      </ImageBackground>
 
-            {/* PLAYER NAME */}
-            {player && (
-              <View style={styles.nameTag}>
-                <Text style={styles.characterName} numberOfLines={1}>
-                  {player.name || "Player"}
-                </Text>
-              </View>
-            )}
+      {/* RESULT */}
+      {room.auctionStatus === "finished" ? (
+        <View style={styles.resultBox}>
+          <Text style={styles.resultTitle}>
+            {winner ? "ITEM WON!" : "NO ONE BID"}
+          </Text>
 
-            {/* TURN INDICATOR */}
-            {isTurn && room.auctionStatus !== "finished" && (
-              <View style={styles.characterTurnBadge}>
-                <Text style={styles.characterTurnText}>YOUR TURN</Text>
-              </View>
-            )}
+          <Text style={styles.text}>
+            {winner
+              ? `${winner.name} won this item for $${room.winningBid}`
+              : "This item remained unsold."}
+          </Text>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.buttonHeading}>
+            {isMyTurn ? "PLACE YOUR BID" : "WAITING FOR PLAYER"}
+          </Text>
 
-            {/* PASSED */}
-            {passedPlayers[player?.uid] && (
-              <Text style={styles.passedBadge}>PASSED</Text>
-            )}
-          </View>
-        );
-      })}
-    </ImageBackground>
+          {isMyTurn ? (
+            <>
+              <View style={styles.buttons}>
+                {BID_AMOUNTS.map((amount) => (
+                  <TouchableOpacity
+                    key={amount}
+                    style={[
+                      styles.bidButton,
+                      actionLoading && styles.disabledButton,
+                    ]}
+                    onPress={() => handleAuctionAction("bid", amount)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={styles.buttonText}>${amount}</Text>
+                  </TouchableOpacity>
+                ))}
 
-    {/* RESULT */}
-    {room.auctionStatus === "finished" ? (
-      <View style={styles.resultBox}>
-        <Text style={styles.resultTitle}>
-          {winner ? "ITEM WON!" : "NO ONE BID"}
-        </Text>
-
-        <Text style={styles.text}>
-          {winner
-            ? `${winner.name} won this item for $${room.winningBid}`
-            : "This item remained unsold."}
-        </Text>
-      </View>
-    ) : (
-      <>
-        <Text style={styles.buttonHeading}>
-          {isMyTurn ? "PLACE YOUR BID" : "WAITING FOR PLAYER"}
-        </Text>
-
-        {isMyTurn ? (
-          <>
-            <View style={styles.buttons}>
-              {BID_AMOUNTS.map((amount) => (
                 <TouchableOpacity
-                  key={amount}
                   style={[
                     styles.bidButton,
+                    styles.noBidButton,
                     actionLoading && styles.disabledButton,
                   ]}
-                  onPress={() => handleAuctionAction("bid", amount)}
+                  onPress={() => handleAuctionAction("pass")}
                   disabled={actionLoading}
                 >
-                  <Text style={styles.buttonText}>${amount}</Text>
+                  <Text style={styles.buttonText}>NO BID</Text>
                 </TouchableOpacity>
-              ))}
+              </View>
+            </>
+          ) : (
+            <Text style={styles.waitingText}>
+              {activePlayer?.name || "Another player"} is making a decision...
+            </Text>
+          )}
+        </>
+      )}
 
-              <TouchableOpacity
-                style={[
-                  styles.bidButton,
-                  styles.noBidButton,
-                  actionLoading && styles.disabledButton,
-                ]}
-                onPress={() => handleAuctionAction("pass")}
-                disabled={actionLoading}
-              >
-                <Text style={styles.buttonText}>NO BID</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <Text style={styles.waitingText}>
-            {activePlayer?.name || "Another player"} is making a decision...
-          </Text>
-        )}
-      </>
-    )}
-
-    {/* PLAYER STATUS */}
-    {/* <View style={styles.playersSection}>
+      {/* PLAYER STATUS */}
+      {/* <View style={styles.playersSection}>
       <Text style={styles.playersHeading}>PLAYERS</Text>
 
       {players.map((player) => (
@@ -531,8 +468,8 @@ return (
         </View>
       ))}
     </View> */}
-  </ScrollView>
-);
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
