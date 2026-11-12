@@ -1,6 +1,8 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { onValue, ref, runTransaction } from "firebase/database";
-import { useEffect, useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db, firestore } from "./utils/Firebase";
+import { useEffect, useState , useRef} from "react";
 import {
   Image,
   ImageBackground,
@@ -14,7 +16,6 @@ import Toast from "react-native-toast-message";
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
 import { useAuth } from "./context/Authcontext";
-import { db } from "./utils/Firebase";
 
 const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
 
@@ -41,6 +42,51 @@ export default function Game() {
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const completionHandled = useRef(false);
+
+  // Automatically finish game when only one player remains
+  useEffect(() => {
+    if (room?.status !== "completed") return;
+
+    if (room?.completionReason !== "one_player_remaining") return;
+
+    if (!user?.uid || completionHandled.current) return;
+
+    completionHandled.current = true;
+
+    const finishGame = async () => {
+      try {
+        const remainingPlayer = room.players?.[user.uid];
+
+        if (!remainingPlayer) {
+          router.replace("/(drawer)/Home");
+          return;
+        }
+
+        // Save the remaining player's final coins
+        // and clear their active room.
+        await updateDoc(doc(firestore, "users", user.uid), {
+          coins: Math.max(0, Number(remainingPlayer.coins || 0)),
+          activeRoom: "",
+        });
+
+        router.replace("/(drawer)/Home");
+      } catch (error) {
+        console.log("Game Completion Error:", error);
+
+        completionHandled.current = false;
+
+        Toast.show({
+          type: "error",
+          text1: "Game Finished",
+          text2: "Could not update your game data. Please try again.",
+        });
+      }
+    };
+
+    finishGame();
+  }, [room, user?.uid, router]);
 
   // Listen to room data
   useEffect(() => {
@@ -89,15 +135,15 @@ export default function Game() {
     : AUCTION_DURATION;
 
   // Countdown stage
- let auctionStage = "BIDDING";
+  let auctionStage = "BIDDING";
 
- if (remainingSeconds <= 10 && remainingSeconds > 7) {
-   auctionStage = "GOING ONCE";
- } else if (remainingSeconds <= 7 && remainingSeconds > 4) {
-   auctionStage = "GOING TWICE";
- } else if (remainingSeconds <= 4 && remainingSeconds > 0) {
-   auctionStage = "GOING THRICE";
- }
+  if (remainingSeconds <= 10 && remainingSeconds > 7) {
+    auctionStage = "GOING ONCE";
+  } else if (remainingSeconds <= 7 && remainingSeconds > 4) {
+    auctionStage = "GOING TWICE";
+  } else if (remainingSeconds <= 4 && remainingSeconds > 0) {
+    auctionStage = "GOING THRICE";
+  }
 
   // Reset image error when item changes
   useEffect(() => {
@@ -374,8 +420,12 @@ export default function Game() {
   }
 
   // Game completed
-  if (room.status === "completed") {
-    return <LeaveRoom />;
+  // One player remains: wait while their data is being saved
+  if (
+    room.status === "completed" &&
+    room.completionReason === "one_player_remaining"
+  ) {
+    return <Loader />;
   }
 
   if (!currentItem) {
@@ -389,6 +439,8 @@ export default function Game() {
         <View>
           <Text style={styles.title}>BID IT WIN IT</Text>
           <Text style={styles.room}>ROOM: {roomId}</Text>
+
+          <LeaveRoom />
         </View>
 
         <View style={styles.coinsBox}>

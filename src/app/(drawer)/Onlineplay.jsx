@@ -67,6 +67,17 @@ export default function OnlinePlay() {
 
       const activeRoom = user.activeRoom || "";
 
+      const balance = Number(user.coins);
+
+      if (!Number.isFinite(balance) || balance <= 0) {
+        Toast.show({
+          type: "error",
+          text1: "Insufficient Coins",
+          text2: "You need a valid coin balance to join a room.",
+        });
+        return;
+      }
+
       if (activeRoom && activeRoom !== roomId) {
         Toast.show({
           type: "error",
@@ -79,7 +90,7 @@ export default function OnlinePlay() {
         uid,
         name: user.name || "Player",
         playerId: user.playerId || "",
-        coins: Number(user.coins ?? 10000),
+        coins: balance,
         isConnected: true,
       };
 

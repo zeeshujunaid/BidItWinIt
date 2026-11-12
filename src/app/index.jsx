@@ -3,13 +3,13 @@ import {
   Text,
   ActivityIndicator,
   StatusBar,
+  Image,
   StyleSheet,
 } from "react-native";
-
+import Bubbels from "./components/Bubbels";
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { ref, get, update } from "firebase/database";
-
 import { useAuth } from "../app/context/Authcontext";
 import { db } from "../app/utils/Firebase";
 
@@ -103,62 +103,165 @@ export default function Index() {
     };
   }, [user, loading]);
 
-  return (
-    <View style={styles.container}>
-      <StatusBar hidden />
+ return (
+  <View style={styles.container}>
+    <StatusBar style="hidden" />
 
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
+    <Bubbels />
 
-      <View style={styles.loaderContent}>
-        <ActivityIndicator size="large" color="#38BDF8" />
+    <View style={styles.content}>
+      <Image
+        source={require("../../assets/images/textlogo.png")}
+        style={styles.logo}
+        resizeMode="contain"
+      />
 
-        <Text style={styles.loaderText}>CHECKING YOUR GAME...</Text>
-      </View>
+      <Text style={styles.tagline}>
+        THE ULTIMATE BIDDING EXPERIENCE
+      </Text>
+
+      <View style={styles.divider} />
+
+       <Text style={styles.heading}>
+        Your Bid. Your Strategy.{"\n"}
+        <Text style={styles.highlight}>Your Win!</Text>
+      </Text>
+
+      <Text style={styles.description}>
+        Challenge your friends, place your bids,
+        and compete to win exciting items.
+      </Text>
+
+      <View style={styles.steps}>
+        <View style={styles.step}>
+          <Text style={styles.stepNumber}>01</Text>
+          <Text style={styles.stepText}>Join a Room</Text>
+        </View>
+
+        <View style={styles.step}>
+          <Text style={styles.stepNumber}>02</Text>
+          <Text style={styles.stepText}>Place Your Bid</Text>
+        </View>
+
+        <View style={styles.step}>
+          <Text style={styles.stepNumber}>03</Text>
+          <Text style={styles.stepText}>Win Items</Text>
+        </View>
+      </View> 
+
+      <ActivityIndicator
+        size="large"
+        color="#ffcd08"
+        style={styles.spinner}
+      />
+
+      <Text style={styles.footer}>
+        LET THE BIDDING BEGIN!
+      </Text> 
     </View>
-  );
-}
+  </View>
+);}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B1020",
-    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 25,
   },
 
-  glowTop: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "#164EAD",
-    opacity: 0.17,
-    top: -160,
-    right: -100,
-  },
-
-  glowBottom: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "#7C3AED",
-    opacity: 0.12,
-    bottom: -150,
-    left: -130,
-  },
-
-  loaderContent: {
-    flex: 1,
+  content: {
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
 
-  loaderText: {
-    color: "#38BDF8",
-    fontSize: 12,
+  logo: {
+    width: 250,
+    height: 110,
+  },
+
+  tagline: {
+    color: "#ffcd08",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 3,
+    marginTop: 5,
+  },
+
+  divider: {
+    width: 45,
+    height: 3,
+    backgroundColor: "#ffcd08",
+    borderRadius: 5,
+    marginTop: 30,
+    marginBottom: 25,
+  },
+
+  heading: {
+    color: "#FFFFFF",
+    fontSize: 27,
+    fontWeight: "900",
+    textAlign: "center",
+    lineHeight: 38,
+  },
+
+  highlight: {
+    color: "#ffcd08",
+  },
+
+  description: {
+    color: "#9CA8BD",
+    fontSize: 14,
+    lineHeight: 23,
+    textAlign: "center",
+    marginTop: 15,
+    paddingHorizontal: 10,
+  },
+
+  steps: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginTop: 40,
+    paddingVertical: 20,
+    paddingHorizontal: 10,
+    backgroundColor: "#151E32",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#26334A",
+  },
+
+  step: {
+    alignItems: "center",
+    flex: 1,
+  },
+
+  stepNumber: {
+    color: "#ffcd08",
+    fontSize: 21,
+    fontWeight: "900",
+  },
+
+  stepText: {
+    color: "#C5CDDA",
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 8,
+    textAlign: "center",
+  },
+
+  spinner: {
+    marginTop: 45,
+  },
+
+  footer: {
+    color: "#66758F",
+    fontSize: 10,
     fontWeight: "800",
     letterSpacing: 2,
-    marginTop: 18,
+    marginTop: 15,
   },
 });

@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Modal,
+  ActivityIndicator,
+} from "react-native";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ref, runTransaction } from "firebase/database";
@@ -8,7 +16,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../context/Authcontext";
 import { db, firestore } from "../utils/Firebase";
 
-export default function LeaveRoom() {
+export default function LeaveRoom({ finalCoins }) {
   const { roomId } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -26,16 +34,33 @@ export default function LeaveRoom() {
       {
         text: "Leave",
         style: "destructive",
+
         onPress: async () => {
           setLeaving(true);
 
           try {
             const roomRef = ref(db, `Rooms/${roomId}`);
 
+            let leavingPlayerCoins;
+
             const result = await runTransaction(roomRef, (currentRoom) => {
-              if (!currentRoom?.players?.[user.uid]) {
+              const leavingPlayer = currentRoom?.players?.[user.uid];
+
+              if (!leavingPlayer) {
                 return;
               }
+
+              // Prevent the highest bidder from leaving
+              // during an active auction
+              if (
+                currentRoom.auctionStatus === "bidding" &&
+                currentRoom.currentHighBidder === user.uid
+              ) {
+                return currentRoom;
+              }
+
+              // Get the player's actual RTDB coins
+              leavingPlayerCoins = Number(leavingPlayer.coins);
 
               const updatedPlayers = {
                 ...currentRoom.players,
@@ -52,6 +77,43 @@ export default function LeaveRoom() {
               const remainingPlayers = Object.values(updatedPlayers).sort(
                 (a, b) => a.seatIndex - b.seatIndex,
               );
+
+              // Only one player remains: finish the game
+              if (remainingPlayers.length === 1) {
+                const remainingPlayer = remainingPlayers[0];
+
+                // Refund the remaining player's reserved bid
+                // if the auction was still active.
+                if (
+                  currentRoom.auctionStatus === "bidding" &&
+                  currentRoom.currentHighBidder === remainingPlayer.uid
+                ) {
+                  remainingPlayer.coins =
+                    Number(remainingPlayer.coins || 0) +
+                    Number(currentRoom.currentBidPrice || 0);
+                }
+
+                const updatedRoom = {
+                  ...currentRoom,
+                  players: updatedPlayers,
+                  presence: updatedPresence,
+                  status: "completed",
+                  completionReason: "one_player_remaining",
+                  activePlayerId: "",
+                  auctionEndsAt: null,
+                  auctionStartedAt: null,
+                  auctionStatus: "finished",
+                  currentBidPrice: 0,
+                  currentHighBidder: "",
+                };
+
+                // Transfer host if the leaving player was the host
+                if (currentRoom.hostId === user.uid) {
+                  updatedRoom.hostId = remainingPlayer.uid;
+                }
+
+                return updatedRoom;
+              }
 
               // Last player leaves: reset current game data
               if (remainingPlayers.length === 0) {
@@ -99,10 +161,42 @@ export default function LeaveRoom() {
               throw new Error("Could not leave the room.");
             }
 
-            // Clear user's active room in Firestore
-            await updateDoc(doc(firestore, "users", user.uid), {
+            const latestRoom = result.snapshot.val();
+
+            // Check if the player is still the highest bidder
+            if (
+              latestRoom?.auctionStatus === "bidding" &&
+              latestRoom?.currentHighBidder === user.uid
+            ) {
+              Alert.alert(
+                "Cannot Leave Yet",
+                "You are the highest bidder. Another player must outbid you before you can leave.",
+              );
+
+              return;
+            }
+
+            // Prefer final game balance if provided.
+            // Otherwise use the actual RTDB player balance.
+            const propCoins =
+              finalCoins === undefined || finalCoins === null
+                ? NaN
+                : Number(finalCoins);
+
+            const coinsToSave = Number.isFinite(propCoins)
+              ? propCoins
+              : leavingPlayerCoins;
+
+            // Clear activeRoom and save coins in Firestore
+            const userUpdate = {
               activeRoom: "",
-            });
+            };
+
+            if (Number.isFinite(coinsToSave)) {
+              userUpdate.coins = Math.max(0, coinsToSave);
+            }
+
+            await updateDoc(doc(firestore, "users", user.uid), userUpdate);
 
             router.replace("/(drawer)/Home");
           } catch (error) {
@@ -122,6 +216,22 @@ export default function LeaveRoom() {
 
   return (
     <View style={styles.container}>
+      <Modal
+        visible={leaving}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#38BDF8" />
+
+          <Text style={styles.loadingText}>Leaving Game...</Text>
+
+          <Text style={styles.loadingSubtext}>
+            Please wait while we update your game data.
+          </Text>
+        </View>
+      </Modal>
       <Text style={styles.title}>Game Completed!</Text>
 
       <Text style={styles.message}>All items have been auctioned.</Text>
@@ -171,6 +281,28 @@ const styles = StyleSheet.create({
 
   disabledButton: {
     opacity: 0.5,
+  },
+
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(7, 17, 31, 0.96)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 25,
+  },
+
+  loadingText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+    marginTop: 20,
+  },
+
+  loadingSubtext: {
+    color: "#A8B7CA",
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: "center",
   },
 
   buttonText: {
