@@ -23,7 +23,6 @@ const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
 const AUCTION_DURATION = 15;
 const AUCTION_DURATION_MS = AUCTION_DURATION * 1000;
 
-// Convert values like "1,200" or "$1,200" into numbers
 const parseMoney = (value) => {
   if (typeof value === "number") return value;
 
@@ -419,8 +418,7 @@ export default function Game() {
     return <Loader />;
   }
 
-  // Game completed
-  // One player remains: wait while their data is being saved
+
   if (
     room.status === "completed" &&
     room.completionReason === "one_player_remaining"
