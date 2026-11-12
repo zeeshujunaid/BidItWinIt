@@ -8,7 +8,7 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native";
-
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ref, runTransaction } from "firebase/database";
 import { doc, updateDoc } from "firebase/firestore";
@@ -16,7 +16,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../context/Authcontext";
 import { db, firestore } from "../utils/Firebase";
 
-export default function LeaveRoom({ finalCoins }) {
+export default function LeaveRoom({ finalCoins, showCompleted = false }) {
   const { roomId } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -79,41 +79,44 @@ export default function LeaveRoom({ finalCoins }) {
               );
 
               // Only one player remains: finish the game
-              if (remainingPlayers.length === 1) {
-                const remainingPlayer = remainingPlayers[0];
+             if (
+               currentRoom.status === "playing" &&
+               remainingPlayers.length === 1
+             ) {
+               const remainingPlayer = remainingPlayers[0];
 
-                // Refund the remaining player's reserved bid
-                // if the auction was still active.
-                if (
-                  currentRoom.auctionStatus === "bidding" &&
-                  currentRoom.currentHighBidder === remainingPlayer.uid
-                ) {
-                  remainingPlayer.coins =
-                    Number(remainingPlayer.coins || 0) +
-                    Number(currentRoom.currentBidPrice || 0);
-                }
+               // Refund the remaining player's reserved bid
+               // if the auction was still active.
+               if (
+                 currentRoom.auctionStatus === "bidding" &&
+                 currentRoom.currentHighBidder === remainingPlayer.uid
+               ) {
+                 remainingPlayer.coins =
+                   Number(remainingPlayer.coins || 0) +
+                   Number(currentRoom.currentBidPrice || 0);
+               }
 
-                const updatedRoom = {
-                  ...currentRoom,
-                  players: updatedPlayers,
-                  presence: updatedPresence,
-                  status: "completed",
-                  completionReason: "one_player_remaining",
-                  activePlayerId: "",
-                  auctionEndsAt: null,
-                  auctionStartedAt: null,
-                  auctionStatus: "finished",
-                  currentBidPrice: 0,
-                  currentHighBidder: "",
-                };
+               const updatedRoom = {
+                 ...currentRoom,
+                 players: updatedPlayers,
+                 presence: updatedPresence,
+                 status: "completed",
+                 completionReason: "one_player_remaining",
+                 activePlayerId: "",
+                 auctionEndsAt: null,
+                 auctionStartedAt: null,
+                 auctionStatus: "finished",
+                 currentBidPrice: 0,
+                 currentHighBidder: "",
+               };
 
-                // Transfer host if the leaving player was the host
-                if (currentRoom.hostId === user.uid) {
-                  updatedRoom.hostId = remainingPlayer.uid;
-                }
+               // Transfer host if the leaving player was the host
+               if (currentRoom.hostId === user.uid) {
+                 updatedRoom.hostId = remainingPlayer.uid;
+               }
 
-                return updatedRoom;
-              }
+               return updatedRoom;
+             }
 
               // Last player leaves: reset current game data
               if (remainingPlayers.length === 0) {
@@ -215,38 +218,41 @@ export default function LeaveRoom({ finalCoins }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Modal
-        visible={leaving}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-      >
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#38BDF8" />
+      <View style={showCompleted ? styles.container : styles.buttonContainer}>
+        <Modal
+          visible={leaving}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+        >
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#38BDF8" />
 
-          <Text style={styles.loadingText}>Leaving Game...</Text>
+            <Text style={styles.loadingText}>Leaving Game...</Text>
 
-          <Text style={styles.loadingSubtext}>
-            Please wait while we update your game data.
-          </Text>
-        </View>
-      </Modal>
-      <Text style={styles.title}>Game Completed!</Text>
+            <Text style={styles.loadingSubtext}>
+              Please wait while we update your game data.
+            </Text>
+          </View>
+        </Modal>
 
-      <Text style={styles.message}>All items have been auctioned.</Text>
+        {showCompleted && (
+          <>
+            <Text style={styles.title}>Game Completed!</Text>
+            <Text style={styles.message}>All items have been auctioned.</Text>
+          </>
+        )}
 
-      <TouchableOpacity
-        style={[styles.leaveButton, leaving && styles.disabledButton]}
-        onPress={handleLeaveRoom}
-        disabled={leaving}
-      >
-        <Text style={styles.buttonText}>
-          {leaving ? "Leaving..." : "Leave Game"}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+        <TouchableOpacity
+          style={[styles.leaveButton, leaving && styles.disabledButton]}
+          onPress={handleLeaveRoom}
+          disabled={leaving}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="exit-outline" size={26} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+      );
 }
 
 const styles = StyleSheet.create({
@@ -270,13 +276,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     marginBottom: 25,
-  },
-
-  leaveButton: {
-    backgroundColor: "#8D2438",
-    paddingVertical: 14,
-    paddingHorizontal: 35,
-    borderRadius: 5,
   },
 
   disabledButton: {
@@ -305,9 +304,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "900",
+  leaveButton: {
+    width: 55,
+    height: 55,
+    backgroundColor: "#8D2438",
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#F0445E",
   },
 });

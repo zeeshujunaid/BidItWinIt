@@ -10,6 +10,7 @@ import {
   Image,
   Alert,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
@@ -25,6 +26,7 @@ import { db, firestore } from "./utils/Firebase";
 import Loader from "./components/Loader";
 import Bubbels from "./components/Bubbels";
 import {useAuth} from "./context/Authcontext"
+import LeaveRoom from "./components/LeaveRoom";
 
 export default function Room() {
 const { user, loading: authLoading } = useAuth();
@@ -294,104 +296,104 @@ useEffect(() => {
   }, [roomId]);
 
   // Leave Room
-  const handleLeaveRoom = async () => {
-    if (leaving) return;
+  // const handleLeaveRoom = async () => {
+  //   if (leaving) return;
 
-    Alert.alert("Leave Room", "Are you sure you want to leave this room?", [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: async () => {
-          setLeaving(true);
+  //   Alert.alert("Leave Room", "Are you sure you want to leave this room?", [
+  //     {
+  //       text: "Cancel",
+  //       style: "cancel",
+  //     },
+  //     {
+  //       text: "Leave",
+  //       style: "destructive",
+  //       onPress: async () => {
+  //         setLeaving(true);
 
-          try {
-            if (!user?.uid) {
-              throw new Error(
-                "User information not found. Please login again.",
-              );
-            }
+  //         try {
+  //           if (!user?.uid) {
+  //             throw new Error(
+  //               "User information not found. Please login again.",
+  //             );
+  //           }
 
-            // Update room atomically
-            const roomRef = ref(db, `Rooms/${roomId}`);
+  //           // Update room atomically
+  //           const roomRef = ref(db, `Rooms/${roomId}`);
 
-            const result = await runTransaction(roomRef, (room) => {
-              if (!room || !room.players) return;
+  //           const result = await runTransaction(roomRef, (room) => {
+  //             if (!room || !room.players) return;
 
-              const players = { ...room.players };
+  //             const players = { ...room.players };
 
-              // Remove leaving player
-              delete players[user.uid];
+  //             // Remove leaving player
+  //             delete players[user.uid];
 
-              const remainingPlayers = Object.values(players);
+  //             const remainingPlayers = Object.values(players);
 
-              // If no players are left
-              if (remainingPlayers.length === 0) {
-                room.hostId = "";
-                room.status = "waiting";
-                delete room.players;
-                delete room.gameItems;
-                delete room.currentItemIndex;
-                delete room.currentRound;
-                delete room.currentBidPrice;
-                delete room.currentHighBidder;
-                delete room.activePlayerId;
-                delete room.passedPlayers;
-                delete room.auctionStatus;
-                delete room.winnerId;
-                delete room.winningBid;
-                delete room.presence 
+  //             // If no players are left
+  //             if (remainingPlayers.length === 0) {
+  //               room.hostId = "";
+  //               room.status = "waiting";
+  //               delete room.players;
+  //               delete room.gameItems;
+  //               delete room.currentItemIndex;
+  //               delete room.currentRound;
+  //               delete room.currentBidPrice;
+  //               delete room.currentHighBidder;
+  //               delete room.activePlayerId;
+  //               delete room.passedPlayers;
+  //               delete room.auctionStatus;
+  //               delete room.winnerId;
+  //               delete room.winningBid;
+  //               delete room.presence 
 
-                return room;
-              }
+  //               return room;
+  //             }
 
-              // Check whether current host is still in the room
-              const hostStillExists = players[room.hostId];
+  //             // Check whether current host is still in the room
+  //             const hostStillExists = players[room.hostId];
 
-              if (!hostStillExists) {
-                // Assign host to next available player
-                const nextHost = remainingPlayers.sort(
-                  (a, b) => a.seatIndex - b.seatIndex,
-                )[0];
+  //             if (!hostStillExists) {
+  //               // Assign host to next available player
+  //               const nextHost = remainingPlayers.sort(
+  //                 (a, b) => a.seatIndex - b.seatIndex,
+  //               )[0];
 
-                room.hostId = nextHost.uid;
-              }
+  //               room.hostId = nextHost.uid;
+  //             }
 
-              room.players = players;
+  //             room.players = players;
 
-              return room;
-            });
+  //             return room;
+  //           });
 
-            if (!result.committed) {
-              throw new Error("Could not update room.");
-            }
+  //           if (!result.committed) {
+  //             throw new Error("Could not update room.");
+  //           }
 
-            // Reset activeRoom in Firestore
-            await updateDoc(doc(firestore, "users", user.uid), {
-              activeRoom: "",
-            });
+  //           // Reset activeRoom in Firestore
+  //           await updateDoc(doc(firestore, "users", user.uid), {
+  //             activeRoom: "",
+  //           });
 
 
-            Alert.alert("Success", "You left the room successfully.");
+  //           Alert.alert("Success", "You left the room successfully.");
 
-            router.replace("/(drawer)/Onlineplay");
-          } catch (error) {
-            console.log("Leave Room Error:", error);
+  //           router.replace("/(drawer)/Onlineplay");
+  //         } catch (error) {
+  //           console.log("Leave Room Error:", error);
 
-            Alert.alert(
-              "Leave Failed",
-              error.message || "Could not leave the room.",
-            );
-          } finally {
-            setLeaving(false);
-          }
-        },
-      },
-    ]);
-  };
+  //           Alert.alert(
+  //             "Leave Failed",
+  //             error.message || "Could not leave the room.",
+  //           );
+  //         } finally {
+  //           setLeaving(false);
+  //         }
+  //       },
+  //     },
+  //   ]);
+  // };
 
   if (loading) {
     return <Loader />;
@@ -404,9 +406,24 @@ useEffect(() => {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Online Room</Text>
-        <Text style={styles.roomName}>{roomId}</Text>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.openDrawer()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="menu" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
 
+          <View style={styles.headerCenter}>
+            <Text style={styles.title}>Online Room</Text>
+            <Text style={styles.roomName}>{roomId}</Text>
+          </View>
+
+          <View style={styles.headerButton}>
+            <LeaveRoom roomId={roomId} />
+          </View>
+        </View>
         <Instruction />
         <View style={styles.playerInfo}>
           <View style={styles.countBox}>
@@ -440,7 +457,7 @@ useEffect(() => {
           <ImageBackground
             source={require("../../assets/images/chracter/waitingchracter.png")}
             style={styles.characterTable}
-            resizeMode="contain"
+            resizeMode="cover"
           >
             {[0, 1, 2, 3, 4].map((seatIndex) => {
               const player = players.find(
@@ -502,19 +519,6 @@ useEffect(() => {
               <Text style={styles.startButtonText}>▶ START</Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            style={[styles.leaveButton, leaving && styles.disabledButton]}
-            onPress={handleLeaveRoom}
-            disabled={leaving}
-            activeOpacity={0.8}
-          >
-            {leaving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.leaveText}>LEAVE ROOM</Text>
-            )}
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -533,6 +537,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 35,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+  },
+
+  headerButton: {
+    width: "20%",
+    height: 45,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  headerCenter: {
+    width: "60%",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   title: {
@@ -633,7 +656,7 @@ const styles = StyleSheet.create({
 
   characterTable: {
     width: "100%",
-    aspectRatio: 2,
+    aspectRatio: 1.8,
     position: "relative",
   },
 
@@ -739,7 +762,7 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "space-around",
     gap: 12,
     width: "100%",
     marginTop: 25,

@@ -430,15 +430,27 @@ export default function Game() {
     return <LeaveRoom />;
   }
 
+  if (room.status === "completed") {
+    return (
+      <LeaveRoom
+        finalCoins={players.find((p) => p.uid === user.uid)?.coins || 0}
+        showCompleted
+      />
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flexDirection: "row", alignItems: "center",justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <LeaveRoom />
+          </View>
+          <View style={{ flexDirection: "column", alignItems: "center", gap: 6 }}>
           <Text style={styles.title}>BID IT WIN IT</Text>
           <Text style={styles.room}>ROOM: {roomId}</Text>
-
-          <LeaveRoom />
+          </View>
         </View>
 
         <View style={styles.coinsBox}>
