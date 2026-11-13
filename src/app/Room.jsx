@@ -10,7 +10,6 @@ import {
   Image,
   Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
@@ -295,106 +294,6 @@ useEffect(() => {
     return unsubscribe;
   }, [roomId]);
 
-  // Leave Room
-  // const handleLeaveRoom = async () => {
-  //   if (leaving) return;
-
-  //   Alert.alert("Leave Room", "Are you sure you want to leave this room?", [
-  //     {
-  //       text: "Cancel",
-  //       style: "cancel",
-  //     },
-  //     {
-  //       text: "Leave",
-  //       style: "destructive",
-  //       onPress: async () => {
-  //         setLeaving(true);
-
-  //         try {
-  //           if (!user?.uid) {
-  //             throw new Error(
-  //               "User information not found. Please login again.",
-  //             );
-  //           }
-
-  //           // Update room atomically
-  //           const roomRef = ref(db, `Rooms/${roomId}`);
-
-  //           const result = await runTransaction(roomRef, (room) => {
-  //             if (!room || !room.players) return;
-
-  //             const players = { ...room.players };
-
-  //             // Remove leaving player
-  //             delete players[user.uid];
-
-  //             const remainingPlayers = Object.values(players);
-
-  //             // If no players are left
-  //             if (remainingPlayers.length === 0) {
-  //               room.hostId = "";
-  //               room.status = "waiting";
-  //               delete room.players;
-  //               delete room.gameItems;
-  //               delete room.currentItemIndex;
-  //               delete room.currentRound;
-  //               delete room.currentBidPrice;
-  //               delete room.currentHighBidder;
-  //               delete room.activePlayerId;
-  //               delete room.passedPlayers;
-  //               delete room.auctionStatus;
-  //               delete room.winnerId;
-  //               delete room.winningBid;
-  //               delete room.presence 
-
-  //               return room;
-  //             }
-
-  //             // Check whether current host is still in the room
-  //             const hostStillExists = players[room.hostId];
-
-  //             if (!hostStillExists) {
-  //               // Assign host to next available player
-  //               const nextHost = remainingPlayers.sort(
-  //                 (a, b) => a.seatIndex - b.seatIndex,
-  //               )[0];
-
-  //               room.hostId = nextHost.uid;
-  //             }
-
-  //             room.players = players;
-
-  //             return room;
-  //           });
-
-  //           if (!result.committed) {
-  //             throw new Error("Could not update room.");
-  //           }
-
-  //           // Reset activeRoom in Firestore
-  //           await updateDoc(doc(firestore, "users", user.uid), {
-  //             activeRoom: "",
-  //           });
-
-
-  //           Alert.alert("Success", "You left the room successfully.");
-
-  //           router.replace("/(drawer)/Onlineplay");
-  //         } catch (error) {
-  //           console.log("Leave Room Error:", error);
-
-  //           Alert.alert(
-  //             "Leave Failed",
-  //             error.message || "Could not leave the room.",
-  //           );
-  //         } finally {
-  //           setLeaving(false);
-  //         }
-  //       },
-  //     },
-  //   ]);
-  // };
-
   if (loading) {
     return <Loader />;
   }
@@ -407,14 +306,6 @@ useEffect(() => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => router.openDrawer()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="menu" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-
           <View style={styles.headerCenter}>
             <Text style={styles.title}>Online Room</Text>
             <Text style={styles.roomName}>{roomId}</Text>
@@ -539,23 +430,28 @@ const styles = StyleSheet.create({
     paddingBottom: 35,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     width: "100%",
+    height: 65,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    position: "relative",
   },
 
   headerButton: {
-    width: "20%",
-    height: 45,
+    width: 55,
+    height: 55,
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 2,
   },
 
   headerCenter: {
-    width: "60%",
-    justifyContent: "center",
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
+    justifyContent: "center",
   },
 
   title: {
@@ -570,7 +466,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     textAlign: "center",
-    marginTop: 7,
+    marginTop: 5,
   },
   countBox: {
     alignSelf: "center",

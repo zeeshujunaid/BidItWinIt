@@ -418,13 +418,16 @@ export default function Game() {
     return <Loader />;
   }
 
-
-  if (
-    room.status === "completed" &&
-    room.completionReason === "one_player_remaining"
-  ) {
-    return <Loader />;
+if (
+  room.status === "completed" &&
+  room.completionReason === "one_player_remaining"
+) {
+  if (room.players?.[user.uid]) {
+    return <LeaveRoom showLastPlayerModal />;
   }
+
+  return <Loader />;
+}
 
   if (!currentItem) {
     return <LeaveRoom />;

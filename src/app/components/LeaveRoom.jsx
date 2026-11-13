@@ -12,11 +12,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ref, runTransaction } from "firebase/database";
 import { doc, updateDoc } from "firebase/firestore";
-
 import { useAuth } from "../context/Authcontext";
 import { db, firestore } from "../utils/Firebase";
 
-export default function LeaveRoom({ finalCoins, showCompleted = false }) {
+export default function LeaveRoom({ finalCoins, showCompleted = false, showLastPlayerModal = false }) {
   const { roomId } = useLocalSearchParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -44,14 +43,13 @@ export default function LeaveRoom({ finalCoins, showCompleted = false }) {
             let leavingPlayerCoins;
 
             const result = await runTransaction(roomRef, (currentRoom) => {
-              const leavingPlayer = currentRoom?.players?.[user.uid];
+              // Room hi nahi ya player pehle se nikla hua: kuch change na karo
+              if (!currentRoom) return currentRoom;
 
-              if (!leavingPlayer) {
-                return;
-              }
+              const leavingPlayer = currentRoom.players?.[user.uid];
+              if (!leavingPlayer) return currentRoom;
 
-              // Prevent the highest bidder from leaving
-              // during an active auction
+              // Highest bidder bidding ke dauran nahi nikal sakta
               if (
                 currentRoom.auctionStatus === "bidding" &&
                 currentRoom.currentHighBidder === user.uid
@@ -59,105 +57,100 @@ export default function LeaveRoom({ finalCoins, showCompleted = false }) {
                 return currentRoom;
               }
 
-              // Get the player's actual RTDB coins
               leavingPlayerCoins = Number(leavingPlayer.coins);
 
-              const updatedPlayers = {
-                ...currentRoom.players,
-              };
-
+              const updatedPlayers = { ...currentRoom.players };
               delete updatedPlayers[user.uid];
 
-              const updatedPresence = {
-                ...(currentRoom.presence || {}),
-              };
-
+              const updatedPresence = { ...(currentRoom.presence || {}) };
               delete updatedPresence[user.uid];
 
-              const remainingPlayers = Object.values(updatedPlayers).sort(
-                (a, b) => a.seatIndex - b.seatIndex,
+              // uid key se lein, object ke andar ki field par depend na karein
+              const remainingEntries = Object.entries(updatedPlayers).sort(
+                ([, a], [, b]) => (a.seatIndex ?? 0) - (b.seatIndex ?? 0),
               );
 
-              // Only one player remains: finish the game
-             if (
-               currentRoom.status === "playing" &&
-               remainingPlayers.length === 1
-             ) {
-               const remainingPlayer = remainingPlayers[0];
-
-               // Refund the remaining player's reserved bid
-               // if the auction was still active.
-               if (
-                 currentRoom.auctionStatus === "bidding" &&
-                 currentRoom.currentHighBidder === remainingPlayer.uid
-               ) {
-                 remainingPlayer.coins =
-                   Number(remainingPlayer.coins || 0) +
-                   Number(currentRoom.currentBidPrice || 0);
-               }
-
-               const updatedRoom = {
-                 ...currentRoom,
-                 players: updatedPlayers,
-                 presence: updatedPresence,
-                 status: "completed",
-                 completionReason: "one_player_remaining",
-                 activePlayerId: "",
-                 auctionEndsAt: null,
-                 auctionStartedAt: null,
-                 auctionStatus: "finished",
-                 currentBidPrice: 0,
-                 currentHighBidder: "",
-               };
-
-               // Transfer host if the leaving player was the host
-               if (currentRoom.hostId === user.uid) {
-                 updatedRoom.hostId = remainingPlayer.uid;
-               }
-
-               return updatedRoom;
-             }
-
-              // Last player leaves: reset current game data
-              if (remainingPlayers.length === 0) {
-                const updatedRoom = {
+              // 1) Koi player nahi bacha: poora room reset (status chahe jo ho)
+              if (remainingEntries.length === 0) {
+                const resetRoom = {
                   ...currentRoom,
-                  players: {},
-                  presence: {},
-                  hostId: "",
                   status: "waiting",
-                  activePlayerId: "",
+                  hostId: "",
                 };
 
-                delete updatedRoom.gameItems;
-                delete updatedRoom.currentItemIndex;
-                delete updatedRoom.currentRound;
-                delete updatedRoom.currentBidPrice;
-                delete updatedRoom.currentHighBidder;
-                delete updatedRoom.auctionStatus;
-                delete updatedRoom.passedPlayers;
-                delete updatedRoom.phaseEndsAt;
-                delete updatedRoom.winnerId;
-                delete updatedRoom.winningBid;
-                delete updatedRoom.actualValue;
-                delete updatedRoom.profit;
-                delete updatedRoom.resultType;
+                [
+                  "players",
+                  "presence",
+                  "gameItems",
+                  "currentItemIndex",
+                  "currentRound",
+                  "currentBidPrice",
+                  "currentHighBidder",
+                  "auctionStatus",
+                  "auctionEndsAt",
+                  "auctionStartedAt",
+                  "passedPlayers",
+                  "phaseEndsAt",
+                  "winnerId",
+                  "winningBid",
+                  "actualValue",
+                  "profit",
+                  "resultType",
+                  "completionReason",
+                  "activePlayerId",
+                ].forEach((key) => delete resetRoom[key]);
 
-                return updatedRoom;
+                return resetRoom;
               }
 
-              const updatedRoom = {
+              const [remainingUid, remainingPlayer] = remainingEntries[0];
+
+              // 2) Sirf ek player bacha aur game chal raha tha: game khatam
+              if (
+                remainingEntries.length === 1 &&
+                currentRoom.status === "playing"
+              ) {
+                if (
+                  currentRoom.auctionStatus === "bidding" &&
+                  currentRoom.currentHighBidder === remainingUid
+                ) {
+                  updatedPlayers[remainingUid] = {
+                    ...remainingPlayer,
+                    coins:
+                      Number(remainingPlayer.coins || 0) +
+                      Number(currentRoom.currentBidPrice || 0),
+                  };
+                }
+
+                return {
+                  ...currentRoom,
+                  players: updatedPlayers,
+                  presence: updatedPresence,
+                  status: "completed",
+                  completionReason: "one_player_remaining",
+                  activePlayerId: "",
+                  auctionEndsAt: null,
+                  auctionStartedAt: null,
+                  auctionStatus: "finished",
+                  currentBidPrice: 0,
+                  currentHighBidder: "",
+                  hostId:
+                    currentRoom.hostId === user.uid
+                      ? remainingUid
+                      : currentRoom.hostId,
+                };
+              }
+
+              // 3) Normal leave
+              return {
                 ...currentRoom,
                 players: updatedPlayers,
                 presence: updatedPresence,
+                hostId:
+                  currentRoom.hostId === user.uid
+                    ? remainingUid
+                    : currentRoom.hostId,
               };
-
-              // Transfer host if host leaves
-              if (currentRoom.hostId === user.uid) {
-                updatedRoom.hostId = remainingPlayers[0].uid;
-              }
-
-              return updatedRoom;
             });
 
             if (!result.committed) {
@@ -217,42 +210,89 @@ export default function LeaveRoom({ finalCoins, showCompleted = false }) {
     ]);
   };
 
-  return (
-      <View style={showCompleted ? styles.container : styles.buttonContainer}>
-        <Modal
-          visible={leaving}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-        >
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#38BDF8" />
+ return (
+  <View style={showCompleted ? styles.container : null}>
+    {/* Full-screen modal for the only remaining player */}
+    <Modal
+      visible={showLastPlayerModal && !leaving}
+      animationType="fade"
+      transparent={false}
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <View style={styles.lastPlayerModal}>
+        <View style={styles.lastPlayerContent}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={65}
+            color="#FACC15"
+          />
 
-            <Text style={styles.loadingText}>Leaving Game...</Text>
+          <Text style={styles.lastPlayerTitle}>
+            Game Ended!
+          </Text>
 
-            <Text style={styles.loadingSubtext}>
-              Please wait while we update your game data.
-            </Text>
-          </View>
-        </Modal>
+          <Text style={styles.lastPlayerMessage}>
+            You are the only player left. The game has ended,
+            and your reserved coins have been refunded.
+          </Text>
 
-        {showCompleted && (
-          <>
-            <Text style={styles.title}>Game Completed!</Text>
-            <Text style={styles.message}>All items have been auctioned.</Text>
-          </>
-        )}
+          <Text style={styles.lastPlayerSubtext}>
+            Leave the game to return to Home.
+          </Text>
 
-        <TouchableOpacity
-          style={[styles.leaveButton, leaving && styles.disabledButton]}
-          onPress={handleLeaveRoom}
-          disabled={leaving}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="exit-outline" size={26} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.leaveButton, leaving && styles.disabledButton]}
+            onPress={handleLeaveRoom}
+            disabled={leaving}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="exit-outline" size={26} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <Text style={styles.leaveLabel}>LEAVE GAME</Text>
+        </View>
       </View>
-      );
+    </Modal>
+
+    {/* Loading modal */}
+    <Modal
+      visible={leaving}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+    >
+      <View style={styles.loadingOverlay}>
+        <ActivityIndicator size="large" color="#38BDF8" />
+
+        <Text style={styles.loadingText}>Leaving Game...</Text>
+
+        <Text style={styles.loadingSubtext}>
+          Please wait while we update your game data.
+        </Text>
+      </View>
+    </Modal>
+
+    {showCompleted && (
+      <>
+        <Text style={styles.title}>Game Completed!</Text>
+        <Text style={styles.message}>All items have been auctioned.</Text>
+      </>
+    )}
+
+    {/* Normal leave button; hidden when the full-screen modal is active */}
+    {!showLastPlayerModal && (
+      <TouchableOpacity
+        style={[styles.leaveButton, leaving && styles.disabledButton]}
+        onPress={handleLeaveRoom}
+        disabled={leaving}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="exit-outline" size={26} color="#FFFFFF" />
+      </TouchableOpacity>
+    )}
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
@@ -302,6 +342,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     textAlign: "center",
+  },
+
+  lastPlayerModal: {
+    flex: 1,
+    backgroundColor: "#07111F",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 25,
+  },
+
+  lastPlayerContent: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#102A40",
+    borderWidth: 1,
+    borderColor: "#38BDF8",
+    borderRadius: 20,
+    padding: 30,
+    alignItems: "center",
+  },
+
+  lastPlayerTitle: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "900",
+    marginTop: 20,
+    marginBottom: 12,
+  },
+
+  lastPlayerMessage: {
+    color: "#CBD5E1",
+    fontSize: 15,
+    lineHeight: 24,
+    textAlign: "center",
+  },
+
+  lastPlayerSubtext: {
+    color: "#38BDF8",
+    fontSize: 13,
+    marginTop: 20,
+    marginBottom: 25,
+    textAlign: "center",
+  },
+
+  leaveLabel: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 10,
+    letterSpacing: 1,
   },
 
   leaveButton: {
