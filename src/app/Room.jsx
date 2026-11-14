@@ -13,147 +13,35 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
+import { db } from "./utils/Firebase";
 import {
   ref,
   onValue,
-  runTransaction,
-  onDisconnect,
-  set,
 } from "firebase/database";
-import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
-import { db, firestore } from "./utils/Firebase";
 import Loader from "./components/Loader";
 import Bubbels from "./components/Bubbels";
 import {useAuth} from "./context/Authcontext"
 import LeaveRoom from "./components/LeaveRoom";
+import { startGame } from "./Rooms/startGame";
+import { useRoomPresence } from "./Hooks/useRoomPresence";
 
 export default function Room() {
 const { user, loading: authLoading } = useAuth();
   const { roomId } = useLocalSearchParams();
+  useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
 const currentUserId = user?.uid || "";
   const router = useRouter();
   const [hostId, setHostId] = useState("");
   const [roomStatus, setRoomStatus] = useState("waiting");
   const [players, setPlayers] = useState([]);
+  const [starting, setStarting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
 
 
-useEffect(() => {
-  if (!roomId) return;
-
-  const presenceRef = ref(db, `Rooms/${roomId}/presence`);
-  const roomRef = ref(db, `Rooms/${roomId}`);
-
-  const unsubscribe = onValue(presenceRef, async (snapshot) => {
-    const presence = snapshot.val() || {};
-
-    console.log("PRESENCE DATA:", presence);
-
-    const disconnectedPlayers = Object.keys(presence).filter(
-      (uid) => presence[uid] === false,
-    );
-
-    console.log("DISCONNECTED PLAYERS:", disconnectedPlayers);
-
-    for (const disconnectedUID of disconnectedPlayers) {
-      console.log("REMOVING PLAYER:", disconnectedUID);
-      try {
-        const result = await runTransaction(roomRef, (room) => {
-          if (!room || room.status !== "waiting") {
-            return;
-          }
-
-          if (!room.players?.[disconnectedUID]) {
-            return;
-          }
-
-          const updatedPlayers = { ...room.players };
-
-          // Player ko players se remove karo
-          delete updatedPlayers[disconnectedUID];
-
-          // Player ko presence se remove karo
-          const updatedPresence = { ...room.presence };
-
-          delete updatedPresence[disconnectedUID];
-
-          // Remaining players
-          const remainingPlayers = Object.entries(updatedPlayers).sort(
-            ([, a], [, b]) => a.seatIndex - b.seatIndex,
-          );
-
-          room.players = updatedPlayers;
-          room.presence = updatedPresence;
-
-          // Host transfer
-          if (room.hostId === disconnectedUID) {
-            room.hostId = remainingPlayers[0]?.[0] || "";
-          }
-
-          return room;
-        });
-
-        // Transaction successful hone ke baad Firestore update
-        if (result.committed) {
-          await updateDoc(doc(firestore, "users", disconnectedUID), {
-            activeRoom: "",
-          });
-
-          console.log("PLAYER REMOVED:", disconnectedUID);
-          console.log("ACTIVE ROOM CLEARED:", disconnectedUID);
-        }
-      } catch (error) {
-        console.log("PLAYER REMOVAL ERROR:", error);
-      }
-    }
-  });
-
-  return () => {
-    unsubscribe();
-  };
-}, [roomId]);
-
-
-  useEffect(() => {
-    if (!roomId || !user?.uid) return;
-
-    const connectedRef = ref(db, ".info/connected");
-    const presenceRef = ref(db, `Rooms/${roomId}/presence/${user.uid}`);
-
-    const unsubscribe = onValue(connectedRef, async (snapshot) => {
-      if (snapshot.val() === true) {
-        try {
-          // Pehle disconnect action register hoga
-          await onDisconnect(presenceRef).set(false);
-
-          // Phir player online mark hoga
-          await set(presenceRef, true);
-
-          console.log("PLAYER ONLINE:", user.uid);
-        } catch (error) {
-          console.log("Presence Error:", error);
-        }
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [roomId, user?.uid]);
-
-  const getRandomItems = (items, count = 10) => {
-    const shuffled = [...items];
-
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-
-    return shuffled.slice(0, count);
-  };
-
   const handleStartGame = async () => {
+    if (starting) return;
+
     if (players.length < 2) {
       Toast.show({
         type: "error",
@@ -162,92 +50,29 @@ useEffect(() => {
       return;
     }
 
+    setStarting(true);
+
     try {
-      const roomRef = ref(db, `Rooms/${roomId}`);
+      const result = await startGame(roomId, currentUserId);
 
-      const result = await runTransaction(roomRef, (room) => {
-        if (!room || room.hostId !== currentUserId) return;
-        if (room.status !== "waiting") return;
-        if (Object.keys(room.players || {}).length < 2) return;
-
-        // Temporary lock so another start attempt cannot run
-        return {
-          ...room,
-          status: "preparing",
-        };
-      });
-
-      if (!result.committed) {
+      if (!result.ok) {
         Toast.show({
           type: "error",
-          text1: "Unable to Start Game",
+          text1:
+            result.reason === "no_items"
+              ? "No game items found."
+              : "Unable to start game.",
         });
-        return;
       }
-
-      // Fetch items from Firestore
-      const gameDataRef = collection(firestore, "Gamedata");
-      const snapshot = await getDocs(gameDataRef);
-
-      const allItems = snapshot.docs.map((itemDoc) => ({
-        id: itemDoc.id,
-        ...itemDoc.data(),
-      }));
-
-      if (allItems.length === 0) {
-        throw new Error("Gamedata collection mein koi item nahi mila.");
-      }
-
-      // Select maximum 10 random items
-      const selectedItems = getRandomItems(allItems, 10);
-
-      // Save selected items and start game
-      const saveResult = await runTransaction(roomRef, (room) => {
-        if (!room || room.hostId !== currentUserId) return;
-        if (room.status !== "preparing") return;
-
-        const sortedPlayers = Object.values(room.players || {}).sort(
-          (a, b) => a.seatIndex - b.seatIndex,
-        );
-
-        return {
-          ...room,
-          gameItems: selectedItems,
-          currentItemIndex: 0,
-          currentRound: 1,
-          currentBidPrice: 0,
-          currentHighBidder: "",
-
-          // First turn goes to Seat 1
-          activePlayerId: sortedPlayers[0]?.uid || "",
-
-          // No Bid tracking
-          passedPlayers: {},
-
-          // Auction status
-          auctionStatus: "bidding",
-
-          status: "playing",
-        };
-      });
-
-      if (!saveResult.committed) {
-        throw new Error("Game data save nahi ho saka.");
-      }
+      // Success par kuch nahi karna: room listener khud /Game bhej dega
     } catch (error) {
       console.log("Start Game Error:", error);
-
-      await runTransaction(ref(db, `Rooms/${roomId}`), (room) => {
-        if (room?.hostId === currentUserId && room.status === "preparing") {
-          return { ...room, status: "waiting" };
-        }
-        return;
-      });
-
       Toast.show({
         type: "error",
         text1: "Failed to start game. Please try again.",
       });
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -403,11 +228,14 @@ useEffect(() => {
         <View style={styles.actionButtons}>
           {hostId === currentUserId && roomStatus === "waiting" && (
             <TouchableOpacity
-              style={styles.startButton}
+              style={[styles.startButton, starting && styles.disabledButton]}
               onPress={handleStartGame}
+              disabled={starting}
               activeOpacity={0.8}
             >
-              <Text style={styles.startButtonText}>▶ START</Text>
+              <Text style={styles.startButtonText}>
+                {starting ? "STARTING..." : "▶ START"}
+              </Text>
             </TouchableOpacity>
           )}
         </View>

@@ -1,8 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { onValue, ref, runTransaction } from "firebase/database";
-import { doc, updateDoc } from "firebase/firestore";
-import { db, firestore } from "./utils/Firebase";
-import { useEffect, useState , useRef} from "react";
+import { onValue, ref } from "firebase/database";
+import { useEffect, useState } from "react";
 import {
   Image,
   ImageBackground,
@@ -16,24 +14,24 @@ import Toast from "react-native-toast-message";
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
 import { useAuth } from "./context/Authcontext";
-
-const BID_AMOUNTS = [100, 250, 500, 1000, 2000];
-
-// Auction timing
-const AUCTION_DURATION = 15;
-const AUCTION_DURATION_MS = AUCTION_DURATION * 1000;
-
-const parseMoney = (value) => {
-  if (typeof value === "number") return value;
-
-  const parsed = Number(String(value || "").replace(/[^0-9.-]/g, ""));
-
-  return Number.isFinite(parsed) ? parsed : 0;
-};
+import {
+  initAuctionTimer,
+  nextItem,
+  placeBid,
+  settleAuction,
+} from "./Rooms/auction";
+import {
+  AUCTION_DURATION_MS,
+  BID_AMOUNTS,
+  NEXT_ITEM_DELAY_MS,
+} from "./Rooms/constants";
+import { db } from "./utils/Firebase";
+import { useRoomPresence } from "./Hooks/useRoomPresence";
 
 export default function Game() {
   const { roomId } = useLocalSearchParams();
-
+  const router = useRouter();
+useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -41,51 +39,14 @@ export default function Game() {
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const completionHandled = useRef(false);
 
-  // Automatically finish game when only one player remains
+
   useEffect(() => {
-    if (room?.status !== "completed") return;
-
-    if (room?.completionReason !== "one_player_remaining") return;
-
-    if (!user?.uid || completionHandled.current) return;
-
-    completionHandled.current = true;
-
-    const finishGame = async () => {
-      try {
-        const remainingPlayer = room.players?.[user.uid];
-
-        if (!remainingPlayer) {
-          router.replace("/(drawer)/Home");
-          return;
-        }
-
-        // Save the remaining player's final coins
-        // and clear their active room.
-        await updateDoc(doc(firestore, "users", user.uid), {
-          coins: Math.max(0, Number(remainingPlayer.coins || 0)),
-          activeRoom: "",
-        });
-
-        router.replace("/(drawer)/Home");
-      } catch (error) {
-        console.log("Game Completion Error:", error);
-
-        completionHandled.current = false;
-
-        Toast.show({
-          type: "error",
-          text1: "Game Finished",
-          text2: "Could not update your game data. Please try again.",
-        });
-      }
-    };
-
-    finishGame();
-  }, [room, user?.uid, router]);
+    if (!room || !user?.uid) return;
+    if (!room.players?.[user.uid]) {
+      router.replace("/(drawer)/Home");
+    }
+  }, [room, user?.uid]);
 
   // Listen to room data
   useEffect(() => {
@@ -120,18 +81,15 @@ export default function Game() {
   );
 
   const currentItem = room?.gameItems?.[room?.currentItemIndex || 0];
-
   const currentBid = room?.currentBidPrice || 0;
-
   const imageurl = currentItem?.imageurl;
-
   const winner = players.find((player) => player.uid === room?.winnerId);
 
   const auctionEndsAt = room?.auctionEndsAt || 0;
 
   const remainingSeconds = auctionEndsAt
     ? Math.max(0, Math.ceil((auctionEndsAt - currentTime) / 1000))
-    : AUCTION_DURATION;
+    : AUCTION_DURATION_MS / 1000;
 
   // Countdown stage
   let auctionStage = "BIDDING";
@@ -155,194 +113,67 @@ export default function Game() {
     if (room?.auctionStatus !== "bidding") return;
     if (room?.auctionEndsAt) return;
 
-    const roomRef = ref(db, `Rooms/${roomId}`);
-
-    runTransaction(roomRef, (currentRoom) => {
-      if (!currentRoom) return;
-      if (currentRoom.status !== "playing") return;
-      if (currentRoom.auctionStatus !== "bidding") return;
-
-      // Another client may already have initialized the timer
-      if (currentRoom.auctionEndsAt) return;
-
-      return {
-        ...currentRoom,
-        auctionStartedAt: Date.now(),
-        auctionEndsAt: Date.now() + AUCTION_DURATION_MS,
-      };
-    }).catch((error) => {
-      console.log("Auction timer initialization error:", error);
-    });
+    initAuctionTimer(roomId).catch((e) =>
+      console.log("Timer init error:", e),
+    );
   }, [roomId, room?.status, room?.auctionStatus, room?.auctionEndsAt]);
 
   // Handle bidding
   const handleBid = async (amount) => {
     if (!user?.uid || actionLoading || amount <= 0) return;
-
     if (room?.auctionStatus !== "bidding") return;
 
     setActionLoading(true);
 
     try {
-      const roomRef = ref(db, `Rooms/${roomId}`);
+      const result = await placeBid(roomId, user.uid, amount);
 
-      const result = await runTransaction(roomRef, (currentRoom) => {
-        if (!currentRoom) return;
-        if (currentRoom.status !== "playing") return;
-        if (currentRoom.auctionStatus !== "bidding") return;
-
-        // Do not accept bids after countdown ends
-        if (
-          !currentRoom.auctionEndsAt ||
-          Date.now() >= currentRoom.auctionEndsAt
-        ) {
-          return;
-        }
-
-        const players = { ...(currentRoom.players || {}) };
-
-        const bidder = players[user.uid];
-
-        if (!bidder) return;
-
-        const currentBid = Number(currentRoom.currentBidPrice || 0);
-        const previousBidderId = currentRoom.currentHighBidder || "";
-
-        // Buttons represent bid increments
-        const newBid = currentBid + amount;
-
-        const bidderCoins = Number(bidder.coins || 0);
-
-        // If the same player increases their bid,
-        // only deduct the additional increment.
-        const requiredCoins = previousBidderId === user.uid ? amount : newBid;
-
-        if (bidderCoins < requiredCoins) return;
-
-        // Refund the previous highest bidder
-        if (previousBidderId && previousBidderId !== user.uid) {
-          const previousBidder = players[previousBidderId];
-
-          if (!previousBidder) return;
-
-          previousBidder.coins = Number(previousBidder.coins || 0) + currentBid;
-        }
-
-        // Deduct the correct amount from the new bidder
-        bidder.coins = bidderCoins - requiredCoins;
-
-        return {
-          ...currentRoom,
-          players,
-          currentBidPrice: newBid,
-          currentHighBidder: user.uid,
-
-          // Every new bid resets the countdown
-          auctionStartedAt: Date.now(),
-          auctionEndsAt: Date.now() + AUCTION_DURATION_MS,
-        };
-      });
-
-      if (!result.committed) {
+      if (!result.ok) {
         Toast.show({
           type: "error",
-          text1: "Bid Failed",
-          text2: "Insufficient coins or auction has ended.",
+          text1:
+            result.reason === "already_leading"
+              ? "You are already the highest bidder"
+              : "Bid Failed",
+          text2:
+            result.reason === "already_leading"
+              ? "Wait for someone to outbid you."
+              : "Insufficient coins or auction has ended.",
         });
       } else {
         Toast.show({
           type: "success",
           text1: "Bid Placed!",
-          text2: `Your new bid is $${currentBid + amount}`,
+          text2: `Your new bid is $${result.newBid}`,
         });
       }
     } catch (error) {
       console.log("Bid Error:", error);
-
-      Toast.show({
-        type: "error",
-        text1: "Something went wrong",
-      });
+      Toast.show({ type: "error", text1: "Something went wrong" });
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Countdown and auction settlement
+  // Auction settlement when timer ends
   useEffect(() => {
     if (!roomId || room?.status !== "playing") return;
     if (room?.auctionStatus !== "bidding") return;
     if (!room?.auctionEndsAt) return;
 
+    let settling = false;
+
     const interval = setInterval(async () => {
-      const now = Date.now();
+      if (settling) return;
+      if (Date.now() < room.auctionEndsAt) return;
 
-      setCurrentTime(now);
-
-      if (now < room.auctionEndsAt) return;
-
+      settling = true;
       try {
-        const roomRef = ref(db, `Rooms/${roomId}`);
-
-        await runTransaction(roomRef, (currentRoom) => {
-          if (!currentRoom) return;
-          if (currentRoom.status !== "playing") return;
-          if (currentRoom.auctionStatus !== "bidding") return;
-
-          if (!currentRoom.auctionEndsAt) return;
-          if (Date.now() < currentRoom.auctionEndsAt) return;
-
-          const players = { ...(currentRoom.players || {}) };
-
-          const winnerId = currentRoom.currentHighBidder || "";
-          const winningBid = Number(currentRoom.currentBidPrice || 0);
-
-          // No player placed a bid
-          if (!winnerId || winningBid <= 0) {
-            return {
-              ...currentRoom,
-              auctionStatus: "finished",
-              resultType: "unsold",
-              winnerId: "",
-              winningBid: 0,
-              actualValue: 0,
-              profit: 0,
-            };
-          }
-
-          const winningPlayer = players[winnerId];
-
-          if (!winningPlayer) return;
-
-          // Actual item value:
-          // Uses value first, then actualValue, then price.
-          const actualValue = parseMoney(
-            currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]?.value ??
-              currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]
-                ?.actualValue ??
-              currentRoom.gameItems?.[currentRoom.currentItemIndex || 0]?.price,
-          );
-
-          // Agreed economy rule:
-          // Winning bid is already deducted.
-          // Credit the winner with actualValue - winningBid.
-          const profit = actualValue - winningBid;
-
-          winningPlayer.coins = Number(winningPlayer.coins || 0) + profit;
-
-          return {
-            ...currentRoom,
-            players,
-            auctionStatus: "finished",
-            resultType: "sold",
-            winnerId,
-            winningBid,
-            actualValue,
-            profit,
-          };
-        });
+        await settleAuction(roomId);
       } catch (error) {
         console.log("Auction settlement error:", error);
+      } finally {
+        settling = false;
       }
     }, 250);
 
@@ -363,52 +194,9 @@ export default function Game() {
     if (room?.status !== "playing") return;
     if (room?.auctionStatus !== "finished") return;
 
-    const timer = setTimeout(async () => {
-      try {
-        const roomRef = ref(db, `Rooms/${roomId}`);
-
-        await runTransaction(roomRef, (currentRoom) => {
-          if (!currentRoom) return;
-          if (currentRoom.status !== "playing") return;
-          if (currentRoom.auctionStatus !== "finished") return;
-
-          const nextIndex = (currentRoom.currentItemIndex || 0) + 1;
-
-          // All items completed
-          if (nextIndex >= (currentRoom.gameItems || []).length) {
-            return {
-              ...currentRoom,
-              status: "completed",
-              auctionStatus: "finished",
-              auctionEndsAt: null,
-              auctionStartedAt: null,
-            };
-          }
-
-          // Start next auction
-          return {
-            ...currentRoom,
-            currentItemIndex: nextIndex,
-            currentRound: nextIndex + 1,
-
-            currentBidPrice: 0,
-            currentHighBidder: "",
-
-            auctionStatus: "bidding",
-            auctionEndsAt: null,
-            auctionStartedAt: null,
-
-            winnerId: "",
-            winningBid: 0,
-            actualValue: 0,
-            profit: 0,
-            resultType: "",
-          };
-        });
-      } catch (error) {
-        console.log("Automatic Next Round Error:", error);
-      }
-    }, 6000);
+    const timer = setTimeout(() => {
+      nextItem(roomId).catch((e) => console.log("Next item error:", e));
+    }, NEXT_ITEM_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [roomId, room?.status, room?.auctionStatus, room?.currentItemIndex]);
@@ -418,16 +206,16 @@ export default function Game() {
     return <Loader />;
   }
 
-if (
-  room.status === "completed" &&
-  room.completionReason === "one_player_remaining"
-) {
-  if (room.players?.[user.uid]) {
-    return <LeaveRoom showLastPlayerModal />;
-  }
+  if (
+    room.status === "completed" &&
+    room.completionReason === "one_player_remaining"
+  ) {
+    if (room.players?.[user.uid]) {
+      return <LeaveRoom showLastPlayerModal />;
+    }
 
-  return <Loader />;
-}
+    return <Loader />;
+  }
 
   if (!currentItem) {
     return <LeaveRoom />;
@@ -446,13 +234,22 @@ if (
     <View style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
-        <View style={{ flexDirection: "row", alignItems: "center",justifyContent: "space-between", gap: 12 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <LeaveRoom />
+            <LeaveRoom />
           </View>
-          <View style={{ flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <Text style={styles.title}>BID IT WIN IT</Text>
-          <Text style={styles.room}>ROOM: {roomId}</Text>
+          <View
+            style={{ flexDirection: "column", alignItems: "center", gap: 6 }}
+          >
+            <Text style={styles.title}>BID IT WIN IT</Text>
+            <Text style={styles.room}>ROOM: {roomId}</Text>
           </View>
         </View>
 

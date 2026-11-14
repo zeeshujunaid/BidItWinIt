@@ -17,8 +17,8 @@ import { db, firestore } from "../utils/Firebase";
 import Header from "../components/Header";
 import Bubbels from "../components/Bubbels";
 import Loader from "../components/Loader";
-
-const ROOM_NAMES = ["Room1", "Room2", "Room3", "Room4", "Room5"];
+import { joinRoom } from "../Rooms/joinRoom";
+import { ROOM_NAMES } from "../Rooms/constants";
 
 export default function OnlinePlay() {
   const router = useRouter();
@@ -49,120 +49,37 @@ export default function OnlinePlay() {
     return unsubscribe;
   }, []);
 
+  const JOIN_ERRORS = {
+    no_coins: [
+      "Insufficient Coins",
+      "You need a valid coin balance to join a room.",
+    ],
+    in_other_room: ["Already in a room", "Please leave that room first."],
+    unavailable: ["Room is full or not available.", ""],
+  };
+
   const handleJoinRoom = async (roomId) => {
     if (joiningRoom) return;
 
     if (!user?.uid) {
-      Toast.show({
-        type: "error",
-        text1: "Please log in to join a room.",
-      });
+      Toast.show({ type: "error", text1: "Please log in to join a room." });
       return;
     }
 
     setJoiningRoom(roomId);
 
     try {
-      const uid = user.uid;
+      const result = await joinRoom(roomId, user);
 
-      const activeRoom = user.activeRoom || "";
-
-      const balance = Number(user.coins);
-
-      if (!Number.isFinite(balance) || balance <= 0) {
-        Toast.show({
-          type: "error",
-          text1: "Insufficient Coins",
-          text2: "You need a valid coin balance to join a room.",
-        });
+      if (!result.ok) {
+        const [text1, text2] = JOIN_ERRORS[result.reason];
+        Toast.show({ type: "error", text1, text2 });
         return;
       }
 
-      if (activeRoom && activeRoom !== roomId) {
-        Toast.show({
-          type: "error",
-          text1: "You are already in another room. Please leave that room first.",
-        });
-        return;
-      }
-
-      const playerData = {
-        uid,
-        name: user.name || "Player",
-        playerId: user.playerId || "",
-        coins: balance,
-        isConnected: true,
-      };
-
-      const roomRef = ref(db, `Rooms/${roomId}`);
-
-      const result = await runTransaction(roomRef, (room) => {
-        if (!room) return;
-
-        const players = room.players || {};
-
-        if (players[uid]) {
-          return room;
-        }
-
-        if (room.status !== "waiting") {
-          return;
-        }
-
-        const maxPlayers = room.maxPlayers || 5;
-
-        if (Object.keys(players).length >= maxPlayers) {
-          return;
-        }
-
-        const usedSeats = Object.values(players).map(
-          (player) => player.seatIndex,
-        );
-
-        let seatIndex = 0;
-
-        while (usedSeats.includes(seatIndex) && seatIndex < maxPlayers) {
-          seatIndex++;
-        }
-
-        if (seatIndex >= maxPlayers) {
-          return;
-        }
-
-        room.players = {
-          ...players,
-          [uid]: {
-            ...playerData,
-            seatIndex,
-          },
-        };
-
-        if (!room.hostId) {
-          room.hostId = uid;
-        }
-
-        return room;
-      });
-
-      if (!result.committed) {
-        Toast.show({
-          type: "error",
-          text1: "Room is full or not available.",
-        });
-        return;
-      }
-
-      await updateDoc(doc(firestore, "users", uid), {
-        activeRoom: roomId,
-      });
-
-      router.push({
-        pathname: "/Room",
-        params: { roomId },
-      });
+      router.push({ pathname: "/Room", params: { roomId } });
     } catch (error) {
       console.log("Join room error:", error);
-
       Toast.show({
         type: "error",
         text1: "Failed to join room. Please try again.",
