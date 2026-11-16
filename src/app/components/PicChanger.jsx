@@ -23,10 +23,10 @@ export default function PicChanger() {
   return (
     <View style={styles.container}>
       <Image
-  source={images[currentIndex]}
-  style={styles.image}
-  resizeMode="contain"
-/>
+        source={images[currentIndex]}
+        style={styles.image}
+        resizeMode="contain"
+      />
     </View>
   );
 }

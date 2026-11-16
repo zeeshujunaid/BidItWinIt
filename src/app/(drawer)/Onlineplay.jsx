@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -6,14 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { doc, updateDoc } from "firebase/firestore";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/Authcontext";
-import { ref, onValue, runTransaction } from "firebase/database";
-import { db, firestore } from "../utils/Firebase";
+import { ref, onValue } from "firebase/database";
+import { db } from "../utils/Firebase";
 import Header from "../components/Header";
 import Bubbels from "../components/Bubbels";
 import Loader from "../components/Loader";
@@ -135,8 +133,8 @@ export default function OnlinePlay() {
             ? "Unavailable"
             : status === "active" || status === "playing"
               ? "In Game"
-              :  status === "finished" || status === "completed"
-  ? "Finished"
+              : status === "finished" || status === "completed"
+                ? "Finished"
                 : playerCount >= maxPlayers
                   ? "Full"
                   : status === "waiting"

@@ -37,8 +37,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-
-    await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
 
       Toast.show({
         type: "success",
@@ -77,126 +76,128 @@ export default function Login() {
   };
 
   return (
-    <View style={{flex: 1}}>
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-    {loading && <Loader />}
-      
-      <StatusBar hidden />
-
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
+    <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <Image
-            source={require("../../../assets/images/textlogo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        {loading && <Loader />}
 
-        {/* Heading */}
-        <View style={styles.headingContainer}>
-          <Text style={styles.heading}>
-            Welcome <Text style={styles.headingBlue}>Back!</Text>
-          </Text>
+        <StatusBar hidden />
 
-          <Text style={styles.subtitle}>Log in and get back in the game.</Text>
-        </View>
+        <View style={styles.glowTop} />
+        <View style={styles.glowBottom} />
 
-        {/* Login form */}
-        <View style={styles.form}>
-          <Text style={styles.label}>EMAIL ADDRESS</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>✉</Text>
-
-            <TextInput
-              placeholder="Enter your email"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Logo */}
+          <View style={styles.logoContainer}>
+            <Image
+              source={require("../../../assets/images/textlogo.png")}
+              style={styles.logo}
+              resizeMode="contain"
             />
           </View>
 
-          <Text style={[styles.label, { marginTop: 22 }]}>PASSWORD</Text>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputIcon}>⌑</Text>
-
-            <TextInput
-              placeholder="Enter your password"
-              placeholderTextColor="#64748B"
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-            />
-
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.showButton}
-            >
-              <Text style={styles.showText}>
-                {showPassword ? "HIDE" : "SHOW"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Forgot password */}
-          <TouchableOpacity
-            style={styles.forgotButton}
-            onPress={() => router.push("/(auth)/ForgotPassword")}
-          >
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
-
-          {/* Login button */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.loginButton, loading && { opacity: 0.7 }]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.loginButtonText}>
-              LOGIN
+          {/* Heading */}
+          <View style={styles.headingContainer}>
+            <Text style={styles.heading}>
+              Welcome <Text style={styles.headingBlue}>Back!</Text>
             </Text>
 
-            {!loading && <Text style={styles.arrow}>→</Text>}
-          </TouchableOpacity>
-
-          {/* Signup link */}
-          <View style={styles.signupContainer}>
-            <Text style={styles.signupText}>New to BidItWinIt? </Text>
-
-            <TouchableOpacity onPress={() => router.push("/(auth)/Signup")}>
-              <Text style={styles.signupLink}>Create account</Text>
-            </TouchableOpacity>
+            <Text style={styles.subtitle}>
+              Log in and get back in the game.
+            </Text>
           </View>
-        </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.footerLine} />
-          <Text style={styles.footerText}>THINK FAST. BID SMART. WIN BIG.</Text>
-          <View style={styles.footerLine} />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  </View>
+          {/* Login form */}
+          <View style={styles.form}>
+            <Text style={styles.label}>EMAIL ADDRESS</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>✉</Text>
+
+              <TextInput
+                placeholder="Enter your email"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <Text style={[styles.label, { marginTop: 22 }]}>PASSWORD</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>⌑</Text>
+
+              <TextInput
+                placeholder="Enter your password"
+                placeholderTextColor="#64748B"
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showText}>
+                  {showPassword ? "HIDE" : "SHOW"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Forgot password */}
+            <TouchableOpacity
+              style={styles.forgotButton}
+              onPress={() => router.push("/(auth)/ForgotPassword")}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+
+            {/* Login button */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.loginButton, loading && { opacity: 0.7 }]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.loginButtonText}>LOGIN</Text>
+
+              {!loading && <Text style={styles.arrow}>→</Text>}
+            </TouchableOpacity>
+
+            {/* Signup link */}
+            <View style={styles.signupContainer}>
+              <Text style={styles.signupText}>New to BidItWinIt? </Text>
+
+              <TouchableOpacity onPress={() => router.push("/(auth)/Signup")}>
+                <Text style={styles.signupLink}>Create account</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <View style={styles.footerLine} />
+            <Text style={styles.footerText}>
+              THINK FAST. BID SMART. WIN BIG.
+            </Text>
+            <View style={styles.footerLine} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -232,7 +233,7 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: "#7C3AED",
-    opacity: 0.10,
+    opacity: 0.1,
     bottom: -120,
     left: -120,
   },
@@ -396,4 +397,3 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 });
-;

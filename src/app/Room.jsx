@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   ScrollView,
   TouchableOpacity,
   ImageBackground,
@@ -14,24 +13,21 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
 import { db } from "./utils/Firebase";
-import {
-  ref,
-  onValue,
-} from "firebase/database";
+import { ref, onValue } from "firebase/database";
 import Loader from "./components/Loader";
 import Bubbels from "./components/Bubbels";
-import {useAuth} from "./context/Authcontext"
+import { useAuth } from "./context/Authcontext";
 import LeaveRoom from "./components/LeaveRoom";
 import { startGame } from "./Rooms/startGame";
 import { useRoomPresence } from "./Hooks/useRoomPresence";
 import { useBlockBack } from "./Hooks/useBlockBack";
 
 export default function Room() {
-const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { roomId } = useLocalSearchParams();
   useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   useBlockBack();
-const currentUserId = user?.uid || "";
+  const currentUserId = user?.uid || "";
   const router = useRouter();
   const [hostId, setHostId] = useState("");
   const [roomStatus, setRoomStatus] = useState("waiting");
@@ -40,14 +36,12 @@ const currentUserId = user?.uid || "";
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
 
-
   useEffect(() => {
     if (loading || !currentUserId) return;
     if (!players.some((p) => p.uid === currentUserId)) {
       router.replace("/(drawer)/Home");
     }
   }, [loading, players, currentUserId]);
-
 
   const handleStartGame = async () => {
     if (starting) return;

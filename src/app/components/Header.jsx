@@ -1,28 +1,20 @@
-import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-} from "react-native";
+import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
 import PicChanger from "./PicChanger";
-import {useAuth} from "../context/Authcontext"
+import { useAuth } from "../context/Authcontext";
 import { useNavigation } from "expo-router";
 
 export default function Header() {
   const { user, loading, logout } = useAuth();
 
-const navigation = useNavigation();
+  const navigation = useNavigation();
 
-const handleMenuPress = () => {
-  navigation.openDrawer();
-};
+  const handleMenuPress = () => {
+    navigation.openDrawer();
+  };
 
   if (loading) {
     return <View style={{ height: 240, backgroundColor: "#0B1020" }} />;
   }
-
-
 
   return (
     <View style={styles.header}>

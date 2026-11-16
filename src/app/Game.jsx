@@ -39,9 +39,9 @@ export default function Game() {
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [currentTime, setCurrentTime] = useState(serverNow());
-  
+
   const { user, loading: authLoading } = useAuth();
-  
+
   useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   useSaveCoins(room, user);
 
@@ -117,9 +117,7 @@ export default function Game() {
     if (room?.auctionStatus !== "bidding") return;
     if (room?.auctionEndsAt) return;
 
-    initAuctionTimer(roomId).catch((e) =>
-      console.log("Timer init error:", e),
-    );
+    initAuctionTimer(roomId).catch((e) => console.log("Timer init error:", e));
   }, [roomId, room?.status, room?.auctionStatus, room?.auctionEndsAt]);
 
   // Handle bidding

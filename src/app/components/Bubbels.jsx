@@ -3,13 +3,12 @@ import { View, StyleSheet } from "react-native";
 export default function Bubbels() {
   return (
     <View pointerEvents="none" style={styles.bubbleContainer}>
-          <View style={[styles.bubble, styles.bubbleOne]} />
-          <View style={[styles.bubble, styles.bubbleTwo]} />
-          <View style={[styles.bubble, styles.bubbleThree]} />
-          <View style={[styles.bubble, styles.bubbleFour]} />
-          <View style={[styles.bubble, styles.bubbleFive]} />
-        </View>
-    
+      <View style={[styles.bubble, styles.bubbleOne]} />
+      <View style={[styles.bubble, styles.bubbleTwo]} />
+      <View style={[styles.bubble, styles.bubbleThree]} />
+      <View style={[styles.bubble, styles.bubbleFour]} />
+      <View style={[styles.bubble, styles.bubbleFive]} />
+    </View>
   );
 }
 

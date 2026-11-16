@@ -1,4 +1,3 @@
-import React, { useRef } from "react";
 import {
   Image,
   ScrollView,
@@ -8,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import {useAuth} from "../context/Authcontext"
+import { useAuth } from "../context/Authcontext";
 const MENU_ITEMS = [
   { label: "Home", icon: "⌂", path: "/Home" },
   { label: "Play with Friends", icon: "♟", path: "/Playwithfriends" },

@@ -17,8 +17,6 @@ export default function Index() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const [checkingRoom, setCheckingRoom] = useState(true);
-
   useEffect(() => {
     if (loading) return;
 
@@ -54,7 +52,6 @@ export default function Index() {
         }
 
         const room = snapshot.val();
-
 
         console.log("ROOM EXISTS:", snapshot.exists());
         console.log("ROOM PLAYERS:", room.players);
@@ -103,64 +100,61 @@ export default function Index() {
     };
   }, [user, loading]);
 
- return (
-  <View style={styles.container}>
-    <StatusBar style="hidden" />
+  return (
+    <View style={styles.container}>
+      <StatusBar style="hidden" />
 
-    <Bubbels />
+      <Bubbels />
 
-    <View style={styles.content}>
-      <Image
-        source={require("../../assets/images/textlogo.png")}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+      <View style={styles.content}>
+        <Image
+          source={require("../../assets/images/textlogo.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
-      <Text style={styles.tagline}>
-        THE ULTIMATE BIDDING EXPERIENCE
-      </Text>
+        <Text style={styles.tagline}>THE ULTIMATE BIDDING EXPERIENCE</Text>
 
-      <View style={styles.divider} />
+        <View style={styles.divider} />
 
-       <Text style={styles.heading}>
-        Your Bid. Your Strategy.{"\n"}
-        <Text style={styles.highlight}>Your Win!</Text>
-      </Text>
+        <Text style={styles.heading}>
+          Your Bid. Your Strategy.{"\n"}
+          <Text style={styles.highlight}>Your Win!</Text>
+        </Text>
 
-      <Text style={styles.description}>
-        Challenge your friends, place your bids,
-        and compete to win exciting items.
-      </Text>
+        <Text style={styles.description}>
+          Challenge your friends, place your bids, and compete to win exciting
+          items.
+        </Text>
 
-      <View style={styles.steps}>
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>01</Text>
-          <Text style={styles.stepText}>Join a Room</Text>
+        <View style={styles.steps}>
+          <View style={styles.step}>
+            <Text style={styles.stepNumber}>01</Text>
+            <Text style={styles.stepText}>Join a Room</Text>
+          </View>
+
+          <View style={styles.step}>
+            <Text style={styles.stepNumber}>02</Text>
+            <Text style={styles.stepText}>Place Your Bid</Text>
+          </View>
+
+          <View style={styles.step}>
+            <Text style={styles.stepNumber}>03</Text>
+            <Text style={styles.stepText}>Win Items</Text>
+          </View>
         </View>
 
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>02</Text>
-          <Text style={styles.stepText}>Place Your Bid</Text>
-        </View>
+        <ActivityIndicator
+          size="large"
+          color="#ffcd08"
+          style={styles.spinner}
+        />
 
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>03</Text>
-          <Text style={styles.stepText}>Win Items</Text>
-        </View>
-      </View> 
-
-      <ActivityIndicator
-        size="large"
-        color="#ffcd08"
-        style={styles.spinner}
-      />
-
-      <Text style={styles.footer}>
-        LET THE BIDDING BEGIN!
-      </Text> 
+        <Text style={styles.footer}>LET THE BIDDING BEGIN!</Text>
+      </View>
     </View>
-  </View>
-);}
+  );
+}
 
 const styles = StyleSheet.create({
   container: {

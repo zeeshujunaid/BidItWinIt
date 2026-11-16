@@ -9,7 +9,6 @@ export async function joinRoom(roomId, user) {
   const uid = user.uid;
   const balance = Number(user.coins);
 
-
   if (!Number.isFinite(balance) || balance <= 0) {
     return { ok: false, reason: "no_coins" };
   }

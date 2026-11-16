@@ -1,5 +1,5 @@
 import { ref, runTransaction } from "firebase/database";
-import { db } from "../utils/Firebase"; 
+import { db } from "../utils/Firebase";
 import { ROOM_STATUS, AUCTION_DURATION_MS, parseMoney } from "./constants";
 import { serverNow } from "../Hooks/serverTime";
 
