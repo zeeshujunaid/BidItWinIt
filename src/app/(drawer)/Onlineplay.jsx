@@ -19,6 +19,7 @@ import Bubbels from "../components/Bubbels";
 import Loader from "../components/Loader";
 import { joinRoom } from "../Rooms/joinRoom";
 import { ROOM_NAMES } from "../Rooms/constants";
+import { cleanupStaleRoom, isRoomStale } from "../Rooms/cleanupRoom";
 
 export default function OnlinePlay() {
   const router = useRouter();
@@ -33,8 +34,15 @@ export default function OnlinePlay() {
     const unsubscribe = onValue(
       roomsRef,
       (snapshot) => {
-        setRooms(snapshot.val() || {});
+        const data = snapshot.val() || {};
+
+        setRooms(data);
         setLoading(false);
+
+        // Atke hue rooms ko reset karo
+        ROOM_NAMES.forEach((id) => {
+          if (isRoomStale(data[id])) cleanupStaleRoom(id);
+        });
       },
       (error) => {
         console.log("Rooms error:", error);
@@ -127,8 +135,8 @@ export default function OnlinePlay() {
             ? "Unavailable"
             : status === "active" || status === "playing"
               ? "In Game"
-              : status === "finished"
-                ? "Finished"
+              :  status === "finished" || status === "completed"
+  ? "Finished"
                 : playerCount >= maxPlayers
                   ? "Full"
                   : status === "waiting"

@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 import Toast from "react-native-toast-message";
-
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
 import { useAuth } from "./context/Authcontext";
@@ -27,19 +26,24 @@ import {
 } from "./Rooms/constants";
 import { db } from "./utils/Firebase";
 import { useRoomPresence } from "./Hooks/useRoomPresence";
+import { useSaveCoins } from "./Hooks/useSaveCoins";
+import { serverNow } from "./Hooks/serverTime";
+import { useBlockBack } from "./Hooks/useBlockBack";
 
 export default function Game() {
   const { roomId } = useLocalSearchParams();
   const router = useRouter();
-useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
+  useBlockBack();
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [currentTime, setCurrentTime] = useState(Date.now());
-
+  const [currentTime, setCurrentTime] = useState(serverNow());
+  
   const { user, loading: authLoading } = useAuth();
-
+  
+  useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
+  useSaveCoins(room, user);
 
   useEffect(() => {
     if (!room || !user?.uid) return;
@@ -165,7 +169,7 @@ useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
 
     const interval = setInterval(async () => {
       if (settling) return;
-      if (Date.now() < room.auctionEndsAt) return;
+      if (serverNow() < room.auctionEndsAt) return;
 
       settling = true;
       try {
@@ -183,7 +187,7 @@ useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   // Update local countdown display
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentTime(Date.now());
+      setCurrentTime(serverNow());
     }, 250);
 
     return () => clearInterval(interval);

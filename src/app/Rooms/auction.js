@@ -1,6 +1,7 @@
 import { ref, runTransaction } from "firebase/database";
 import { db } from "../utils/Firebase"; 
 import { ROOM_STATUS, AUCTION_DURATION_MS, parseMoney } from "./constants";
+import { serverNow } from "../Hooks/serverTime";
 
 const roomRef = (roomId) => ref(db, `Rooms/${roomId}`);
 
@@ -12,7 +13,7 @@ export async function initAuctionTimer(roomId) {
     if (room.auctionStatus !== "bidding") return;
     if (room.auctionEndsAt) return;
 
-    const now = Date.now();
+    const now = serverNow();
     return {
       ...room,
       auctionStartedAt: now,
@@ -32,7 +33,7 @@ export async function placeBid(roomId, uid, amount) {
     if (!room) return room;
     if (room.status !== ROOM_STATUS.PLAYING) return;
     if (room.auctionStatus !== "bidding") return;
-    if (!room.auctionEndsAt || Date.now() >= room.auctionEndsAt) return;
+    if (!room.auctionEndsAt || serverNow() >= room.auctionEndsAt) return;
 
     const players = { ...(room.players || {}) };
     const bidder = players[uid];
@@ -63,7 +64,7 @@ export async function placeBid(roomId, uid, amount) {
 
     players[uid] = { ...bidder, coins: bidderCoins - newBid };
 
-    const now = Date.now();
+    const now = serverNow();
     return {
       ...room,
       players,
@@ -85,7 +86,7 @@ export async function settleAuction(roomId) {
     if (!room) return room;
     if (room.status !== ROOM_STATUS.PLAYING) return;
     if (room.auctionStatus !== "bidding") return;
-    if (!room.auctionEndsAt || Date.now() < room.auctionEndsAt) return;
+    if (!room.auctionEndsAt || serverNow() < room.auctionEndsAt) return;
 
     const winnerId = room.currentHighBidder || "";
     const winningBid = Number(room.currentBidPrice || 0);
