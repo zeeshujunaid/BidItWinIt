@@ -66,11 +66,11 @@ export default function Index() {
           return;
         }
 
-        // Finished game check
-        if (room.auctionStatus === "finished") {
-          router.replace("/(drawer)/Home");
-          return;
-        }
+        // // Finished game check
+        // if (room.auctionStatus === "finished") {
+        //   router.replace("/(drawer)/Home");
+        //   return;
+        // }
 
         await update(ref(db, `Rooms/${activeRoom}/players/${user.uid}`), {
           isConnected: true,

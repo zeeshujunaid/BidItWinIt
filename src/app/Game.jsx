@@ -59,8 +59,13 @@ export default function Game() {
     const roomRef = ref(db, `Rooms/${roomId}`);
 
     const unsubscribe = onValue(
+      
       roomRef,
       (snapshot) => {
+        if (!snapshot.exists()) {
+          router.replace("/(drawer)/Home");
+          return;
+        }
         setRoom(snapshot.val());
         setLoading(false);
       },
