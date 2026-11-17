@@ -1,19 +1,30 @@
 import { ref, runTransaction } from "firebase/database";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, firestore } from "../../app/utils/Firebase";
 import { MAX_PLAYERS, ROOM_STATUS } from "./constants";
 
 // Returns: { ok: true } or { ok: false, reason }
 // reasons: "no_coins" | "in_other_room" | "unavailable"
+
 export async function joinRoom(roomId, user) {
   const uid = user.uid;
-  const balance = Number(user.coins);
+
+  // Get actual profile data from Firestore
+  const userRef = doc(firestore, "users", uid);
+  const userSnap = await getDoc(userRef);
+
+  if (!userSnap.exists()) {
+    return { ok: false, reason: "unavailable" };
+  }
+
+  const userData = userSnap.data();
+  const balance = Number(userData.coins);
 
   if (!Number.isFinite(balance) || balance <= 0) {
     return { ok: false, reason: "no_coins" };
   }
 
-  if (user.activeRoom && user.activeRoom !== roomId) {
+  if (userData.activeRoom && userData.activeRoom !== roomId) {
     return { ok: false, reason: "in_other_room" };
   }
 
@@ -33,7 +44,9 @@ export async function joinRoom(roomId, user) {
 
     const usedSeats = Object.values(players).map((p) => p.seatIndex);
     let seatIndex = 0;
+
     while (usedSeats.includes(seatIndex)) seatIndex++;
+
     if (seatIndex >= maxPlayers) return; // abort
 
     return {
@@ -42,10 +55,11 @@ export async function joinRoom(roomId, user) {
         ...players,
         [uid]: {
           uid,
-          name: user.name || "Player",
-          playerId: user.playerId || "",
+          name: userData.name || "Player",
+          playerId: userData.playerId || "",
           coins: balance,
           isConnected: true,
+          profilePic: userData.profilePic || "",
           seatIndex,
         },
       },
@@ -53,13 +67,14 @@ export async function joinRoom(roomId, user) {
     };
   });
 
-  // Confirm we are really in the room (room may not exist at all)
+  // Confirm we are really in the room
   const finalRoom = result.snapshot.val();
+
   if (!result.committed || !finalRoom?.players?.[uid]) {
     return { ok: false, reason: "unavailable" };
   }
 
-  await updateDoc(doc(firestore, "users", uid), { activeRoom: roomId });
+  await updateDoc(userRef, { activeRoom: roomId });
 
   return { ok: true };
 }

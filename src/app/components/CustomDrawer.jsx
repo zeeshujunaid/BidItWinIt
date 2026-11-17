@@ -53,7 +53,11 @@ export default function CustomDrawer(props) {
         {/* Player Profile */}
         <View style={styles.profileCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>Z</Text>
+            <Image
+              source={{ uri: user?.profilePic }}
+              style={styles.avatar}
+              resizeMode="contain"
+            />
             <View style={styles.onlineDot} />
           </View>
 

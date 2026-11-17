@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+
     let unsubscribeProfile = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
@@ -28,6 +29,7 @@ export function AuthProvider({ children }) {
 
       // Firestore se current user ka live profile
       const userRef = doc(firestore, "users", firebaseUser.uid);
+
 
       unsubscribeProfile = onSnapshot(
         userRef,

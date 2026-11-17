@@ -184,11 +184,7 @@ export default function Room() {
                 (p) => Number(p.seatIndex) === seatIndex,
               );
 
-              const avatar =
-                player?.photoURL ||
-                player?.avatarUrl ||
-                player?.profilePic ||
-                player?.photoUrl;
+              const avatar = player?.profilePic || null;
 
               return (
                 <View
@@ -396,7 +392,7 @@ const styles = StyleSheet.create({
 
   // Avatar positions: left to right
   seat1: {
-    left: "4%",
+    left: "2%",
     top: "14%",
   },
 
@@ -411,12 +407,12 @@ const styles = StyleSheet.create({
   },
 
   seat4: {
-    left: "60%",
+    left: "61%",
     top: "14%",
   },
 
   seat5: {
-    left: "79%",
+    left: "80%",
     top: "14%",
   },
 
