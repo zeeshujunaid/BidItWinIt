@@ -24,7 +24,6 @@ export default function Index() {
 
     const checkSession = async () => {
       try {
-        // User login nahi hai
         if (!user) {
           router.replace("/(auth)/Login");
           return;
@@ -32,10 +31,6 @@ export default function Index() {
 
         // Active room check
         const activeRoom = user.activeRoom;
-
-        console.log("CURRENT USER:", user.uid);
-        console.log("USER NAME:", user.name);
-        console.log("ACTIVE ROOM:", user.activeRoom);
 
         if (!activeRoom) {
           router.replace("/(drawer)/Home");
@@ -65,12 +60,6 @@ export default function Index() {
           router.replace("/(drawer)/Home");
           return;
         }
-
-        // // Finished game check
-        // if (room.auctionStatus === "finished") {
-        //   router.replace("/(drawer)/Home");
-        //   return;
-        // }
 
         await update(ref(db, `Rooms/${activeRoom}/players/${user.uid}`), {
           isConnected: true,
