@@ -10,17 +10,16 @@ import {
   TextInput,
   TouchableOpacity,
   Modal,
-  Pressable,
-  ActivityIndicator,
   StyleSheet,
 } from "react-native";
 import Toast from "react-native-toast-message";
 import { useRouter } from "expo-router";
 import Loader from "../components/Loader";
 import * as ImagePicker from "expo-image-picker";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, firestore } from "../utils/Firebase";
+import { File } from "expo-file-system";
 
 export default function Signup() {
   const router = useRouter();
@@ -38,7 +37,6 @@ export default function Signup() {
 
   const [profilePic, setProfilePic] = useState(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   const avatars = [
     {
@@ -59,7 +57,6 @@ export default function Signup() {
     },
   ];
 
-  const playerId = Math.floor(100000 + Math.random() * 900000);
 
   const PickCustomImage = async () => {
     try {
@@ -95,113 +92,184 @@ export default function Signup() {
     setShowAvatarModal(false);
   };
 
-  const UploadToCloudinary = async (imageUri) => {
-    const formData = new FormData();
+ 
+const UploadToCloudinary = async (imageUri) => {
+  const formData = new FormData();
 
-    if (imageUri.startsWith("http")) {
-      // Predefined avatar URL
-      formData.append("file", imageUri);
-    } else {
-      // Custom image from mobile gallery
-      formData.append("file", {
-        uri: imageUri,
-        name: "profile.jpg",
-        type: "image/jpeg",
-      });
-    }
+  if (imageUri.startsWith("http")) {
+    // Predefined avatar URL
+    formData.append("file", imageUri);
+  } else {
+    // Custom gallery image
+    const file = new File(imageUri);
+    formData.append("file", file);
+  }
 
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("folder", "biditwinit");
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", "biditwinit");
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-      {
-        method: "POST",
-        body: formData,
-      },
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || "Image upload failed");
+  }
+
+  return data.secure_url;
+};
+
+
+  
+const HandleSignup = async () => {
+  // 1. Name validation
+  if (!name.trim()) {
+    Toast.show({
+      type: "error",
+      text1: "Name is required",
+    });
+    return;
+  }
+
+  // 2. Email validation
+  if (!email.trim()) {
+    Toast.show({
+      type: "error",
+      text1: "Email is required",
+    });
+    return;
+  }
+
+  // Valid email format: example@gmail.com, example@yahoo.com
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+
+  if (!emailRegex.test(email.trim())) {
+    Toast.show({
+      type: "error",
+      text1: "Please enter a valid email address",
+      text2: "Example: example@gmail.com",
+    });
+    return;
+  }
+
+  // 3. Password validation
+  if (!password.trim()) {
+    Toast.show({
+      type: "error",
+      text1: "Password is required",
+    });
+    return;
+  }
+
+  if (password.length < 6) {
+    Toast.show({
+      type: "error",
+      text1: "Password must be at least 6 characters",
+    });
+    return;
+  }
+
+  // 4. Confirm password validation
+  if (!confirmPassword.trim()) {
+    Toast.show({
+      type: "error",
+      text1: "Please confirm your password",
+    });
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    Toast.show({
+      type: "error",
+      text1: "Confirm password does not match",
+    });
+    return;
+  }
+
+  setLoading(true);
+
+  let createdUser = null;
+  let profileCreated = false;
+
+  try {
+    // Create Firebase Authentication account
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email.trim(),
+      password,
     );
 
-    const data = await response.json();
+    createdUser = userCredential.user;
 
-    if (!response.ok) {
-      throw new Error(data.error?.message || "Image upload failed");
+    // Upload selected image or default avatar
+    const imageToUpload = profilePic || avatars[0].uri;
+
+    const uploadedProfilePic = await UploadToCloudinary(imageToUpload);
+
+    const startingCoins = 10000;
+
+    const playerId = Math.floor(100000 + Math.random() * 900000);
+
+    // Save user profile in Firestore
+    await setDoc(doc(firestore, "users", createdUser.uid), {
+      uid: createdUser.uid,
+      name: name.trim(),
+      email: email.trim(),
+      coins: startingCoins,
+      createdAt: Date.now(),
+      playerId: playerId,
+      activeRoom: "",
+      profilePic: uploadedProfilePic,
+    });
+
+    profileCreated = true;
+
+    Toast.show({
+      type: "success",
+      text1: "Account Created!",
+      text2: `${startingCoins} coins added to your account.`,
+    });
+
+    router.replace("/(drawer)/Home");
+  } catch (error) {
+    console.log("Signup error:", error);
+
+    // Remove incomplete Firebase account if profile was not saved
+    if (createdUser && !profileCreated) {
+      try {
+        await deleteUser(createdUser);
+        console.log("Incomplete Firebase account deleted");
+      } catch (deleteError) {
+        console.log("Account cleanup error:", deleteError);
+      }
     }
 
-    return data.secure_url;
-  };
+    let errorMessage = error.message;
 
-  const HandleSignup = async () => {
-    if (
-      password !== confirmPassword ||
-      name.trim() === "" ||
-      email.trim() === "" ||
-      password.trim() === ""
-    ) {
-      Toast.show({
-        type: "error",
-        text1: "Please fill in all fields and ensure passwords match",
-      });
-      return;
+    if (error.code === "auth/email-already-in-use") {
+      errorMessage = "This email is already registered. Please login.";
+    } else if (error.code === "auth/invalid-email") {
+      errorMessage = "Please enter a valid email address.";
+    } else if (error.code === "auth/weak-password") {
+      errorMessage = "Password must be at least 6 characters.";
     }
 
-    if (password.length < 6) {
-      Toast.show({
-        type: "error",
-        text1: "Password must be at least 6 characters",
-      });
-      return;
-    }
+    Toast.show({
+      type: "error",
+      text1: "Signup Failed",
+      text2: errorMessage,
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
-    setLoading(true);
-
-    try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password,
-      );
-
-      const user = userCredential.user;
-
-      // Upload selected image or default avatar
-      const imageToUpload = profilePic || avatars[0].uri;
-
-      const uploadedProfilePic = await UploadToCloudinary(imageToUpload);
-
-      const startingCoins = 10000;
-
-      const playerId = Math.floor(100000 + Math.random() * 900000);
-
-      await setDoc(doc(firestore, "users", user.uid), {
-        uid: user.uid,
-        name: name.trim(),
-        email: email.trim(),
-        coins: startingCoins,
-        createdAt: Date.now(),
-        playerId: playerId,
-        activeRoom: "",
-        profilePic: uploadedProfilePic,
-      });
-
-      Toast.show({
-        type: "success",
-        text1: "Account Created!",
-        text2: `${startingCoins} coins added to your account.`,
-      });
-
-      router.replace("/(drawer)/Home");
-    } catch (error) {
-      console.log("Signup error:", error);
-
-      Toast.show({
-        type: "error",
-        text1: "Signup Failed",
-        text2: error.message,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <View style={{ flex: 1 }}>
