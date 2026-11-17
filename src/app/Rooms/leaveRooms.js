@@ -59,6 +59,7 @@ export async function leaveRooms(roomId, uid, finalCoins) {
 
     // 1) Last player: reset room
     if (remaining.length === 0) {
+      if (room.isPrivate) return null; 
       const reset = { ...room, status: ROOM_STATUS.WAITING, hostId: "" };
       RESET_KEYS.forEach((k) => delete reset[k]);
       return reset;

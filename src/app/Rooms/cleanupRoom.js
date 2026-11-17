@@ -30,6 +30,7 @@ export async function cleanupStaleRoom(roomId) {
 
       // Transaction ke andar dobara check: shayad koi wapas aa gaya
       if (!isRoomStale(room)) return;
+      if (room.isPrivate) return null;
 
       const reset = { ...room, status: ROOM_STATUS.WAITING, hostId: "" };
       RESET_KEYS.forEach((k) => delete reset[k]);

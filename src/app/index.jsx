@@ -72,18 +72,18 @@ export default function Index() {
           return;
         }
 
-        // Reconnect player
         await update(ref(db, `Rooms/${activeRoom}/players/${user.uid}`), {
           isConnected: true,
         });
 
         if (!isActive) return;
 
-        // Direct Game screen
-        router.replace({
-          pathname: "/Game",
-          params: { roomId: activeRoom },
-        });
+        if (room.status === "waiting") {
+          router.replace({ pathname: "/Room", params: { roomId: activeRoom } });
+        } else {
+          // playing ya completed: Game screen khud result/modal dikha dega
+          router.replace({ pathname: "/Game", params: { roomId: activeRoom } });
+        }
       } catch (error) {
         console.log("Session checking error:", error);
 

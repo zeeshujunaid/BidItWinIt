@@ -34,6 +34,7 @@ async function removeDisconnectedPlayer(roomId, uid) {
 
       // 1) Koi nahi bacha: room reset
       if (remaining.length === 0) {
+         if (room.isPrivate) return null;
         const reset = { ...room, status: ROOM_STATUS.WAITING, hostId: "" };
         RESET_KEYS.forEach((k) => delete reset[k]);
         return reset;
