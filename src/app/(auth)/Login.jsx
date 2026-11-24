@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,37 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import Toast from "react-native-toast-message";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import Loader from "../components/Loader";
 import { auth } from "../utils/Firebase";
+
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  border: "#293A56",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  text: "#FFFFFF",
+  label: "#CBD5E1",
+  muted: "#94A3B8",
+  placeholder: "#64748B",
+  line: "#273247",
+};
+
+const ACTIVITY = [
+  "🔥 Ali just won a Vintage Watch for 1,200 coins",
+  "💰 Sara outbid Hamza and took a Mystery Crate",
+  "🏆 Usman cashed out 3,500 coins in one round",
+  "⚡ 12 players are bidding right now",
+];
 
 export default function Login() {
   const router = useRouter();
@@ -23,6 +48,51 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // UI-only state
+  const [focused, setFocused] = useState(null);
+  const [activityIndex, setActivityIndex] = useState(0);
+  const pulse = useRef(new Animated.Value(0.1)).current;
+  const activityFade = useRef(new Animated.Value(1)).current;
+
+  // Pulsing gold spotlight
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.26,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  // Rotating live activity messages
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.timing(activityFade, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        setActivityIndex((i) => (i + 1) % ACTIVITY.length);
+        Animated.timing(activityFade, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [activityFade]);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -41,8 +111,8 @@ export default function Login() {
 
       Toast.show({
         type: "success",
-        text1: "Login Successful!",
-        text2: "welcome back to BidItWinIt.",
+        text1: "You're in!",
+        text2: "Welcome back to BidItWinIt. Time to bid.",
       });
 
       router.replace("/(drawer)/Home");
@@ -75,6 +145,15 @@ export default function Login() {
     }
   };
 
+  const onLoginPress = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch (e) {
+      // haptics not available, ignore
+    }
+    handleLogin();
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView
@@ -85,7 +164,7 @@ export default function Login() {
 
         <StatusBar hidden />
 
-        <View style={styles.glowTop} />
+        <Animated.View style={[styles.glowTop, { opacity: pulse }]} />
         <View style={styles.glowBottom} />
 
         <ScrollView
@@ -105,46 +184,84 @@ export default function Login() {
           {/* Heading */}
           <View style={styles.headingContainer}>
             <Text style={styles.heading}>
-              Welcome <Text style={styles.headingBlue}>Back!</Text>
+              Welcome <Text style={styles.headingGold}>Back, Bidder</Text>
             </Text>
 
             <Text style={styles.subtitle}>
-              Log in and get back in the game.
+              Your rivals are already bidding.
             </Text>
+          </View>
+
+          {/* Live activity strip */}
+          <View style={styles.activityCard}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
+            <Animated.Text
+              numberOfLines={1}
+              style={[styles.activityText, { opacity: activityFade }]}
+            >
+              {ACTIVITY[activityIndex]}
+            </Animated.Text>
           </View>
 
           {/* Login form */}
           <View style={styles.form}>
             <Text style={styles.label}>EMAIL ADDRESS</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>✉</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "email" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color={focused === "email" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Enter your email"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
             </View>
 
             <Text style={[styles.label, { marginTop: 22 }]}>PASSWORD</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>⌑</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "password" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color={focused === "password" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Enter your password"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
 
               <TouchableOpacity
@@ -167,14 +284,28 @@ export default function Login() {
 
             {/* Login button */}
             <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.loginButton, loading && { opacity: 0.7 }]}
-              onPress={handleLogin}
+              activeOpacity={0.85}
+              style={[styles.loginButtonWrap, loading && { opacity: 0.7 }]}
+              onPress={onLoginPress}
               disabled={loading}
             >
-              <Text style={styles.loginButtonText}>LOGIN</Text>
+              <LinearGradient
+                colors={[COLORS.goldLight, COLORS.goldDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.loginButton}
+              >
+                <Text style={styles.loginButtonText}>ENTER THE AUCTION</Text>
 
-              {!loading && <Text style={styles.arrow}>→</Text>}
+                {!loading && (
+                  <Ionicons
+                    name="hammer"
+                    size={22}
+                    color="#1A1200"
+                    style={styles.arrow}
+                  />
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             {/* Signup link */}
@@ -204,7 +335,7 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     overflow: "hidden",
   },
 
@@ -218,12 +349,11 @@ const styles = StyleSheet.create({
 
   glowTop: {
     position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: "#164EAD",
-    opacity: 0.16,
-    top: -130,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: COLORS.goldDark,
+    top: -140,
     right: -110,
   },
 
@@ -233,7 +363,7 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: "#7C3AED",
-    opacity: 0.1,
+    opacity: 0.12,
     bottom: -120,
     left: -120,
   },
@@ -250,24 +380,61 @@ const styles = StyleSheet.create({
 
   headingContainer: {
     alignItems: "center",
-    marginBottom: 35,
+    marginBottom: 22,
   },
 
   heading: {
-    color: "#FFFFFF",
-    fontSize: 32,
+    color: COLORS.text,
+    fontSize: 30,
     fontWeight: "900",
     letterSpacing: 0.5,
+    textAlign: "center",
   },
 
-  headingBlue: {
-    color: "#38BDF8",
+  headingGold: {
+    color: COLORS.gold,
   },
 
   subtitle: {
-    color: "#94A3B8",
+    color: COLORS.muted,
     fontSize: 14,
     marginTop: 10,
+  },
+
+  // Live activity strip
+  activityCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(251,191,36,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 28,
+  },
+
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
+    marginRight: 6,
+  },
+
+  liveText: {
+    color: "#EF4444",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginRight: 10,
+  },
+
+  activityText: {
+    flex: 1,
+    color: "#FDE68A",
+    fontSize: 12,
+    fontWeight: "600",
   },
 
   form: {
@@ -275,7 +442,7 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: "#CBD5E1",
+    color: COLORS.label,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.5,
@@ -286,22 +453,25 @@ const styles = StyleSheet.create({
     minHeight: 58,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#131D31",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#293A56",
+    borderColor: COLORS.border,
     borderRadius: 14,
     paddingHorizontal: 15,
   },
 
+  inputFocused: {
+    borderColor: COLORS.gold,
+    backgroundColor: "#1A2538",
+  },
+
   inputIcon: {
-    color: "#38BDF8",
-    fontSize: 20,
     width: 30,
   },
 
   input: {
     flex: 1,
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 14,
     paddingVertical: 15,
   },
@@ -312,7 +482,7 @@ const styles = StyleSheet.create({
   },
 
   showText: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1,
@@ -325,27 +495,30 @@ const styles = StyleSheet.create({
   },
 
   forgotText: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 13,
     fontWeight: "600",
+  },
+
+  loginButtonWrap: {
+    borderRadius: 16,
+    shadowColor: COLORS.goldDark,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
   },
 
   loginButton: {
     height: 60,
     borderRadius: 16,
-    backgroundColor: "#1D8FE1",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#1D8FE1",
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
   },
 
   loginButtonText: {
-    color: "#FFFFFF",
+    color: "#1A1200",
     fontSize: 15,
     fontWeight: "900",
     letterSpacing: 2,
@@ -354,8 +527,6 @@ const styles = StyleSheet.create({
   arrow: {
     position: "absolute",
     right: 18,
-    color: "#FFFFFF",
-    fontSize: 25,
   },
 
   signupContainer: {
@@ -367,12 +538,12 @@ const styles = StyleSheet.create({
   },
 
   signupText: {
-    color: "#94A3B8",
+    color: COLORS.muted,
     fontSize: 13,
   },
 
   signupLink: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 13,
     fontWeight: "800",
   },
@@ -387,12 +558,13 @@ const styles = StyleSheet.create({
   footerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#273247",
+    backgroundColor: COLORS.line,
   },
 
   footerText: {
-    color: "#64748B",
-    fontSize: 8,
+    color: COLORS.gold,
+    opacity: 0.8,
+    fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
   },

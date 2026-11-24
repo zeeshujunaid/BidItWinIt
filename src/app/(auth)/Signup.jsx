@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,15 +11,33 @@ import {
   TouchableOpacity,
   Modal,
   StyleSheet,
+  Animated,
 } from "react-native";
 import Toast from "react-native-toast-message";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import Loader from "../components/Loader";
 import * as ImagePicker from "expo-image-picker";
 import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, firestore } from "../utils/Firebase";
 import { File } from "expo-file-system";
+
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  border: "#293A56",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  text: "#FFFFFF",
+  label: "#CBD5E1",
+  muted: "#94A3B8",
+  placeholder: "#64748B",
+  line: "#273247",
+};
 
 export default function Signup() {
   const router = useRouter();
@@ -31,12 +49,35 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-
   const CLOUDINARY_CLOUD_NAME = "dudx3of1n";
   const CLOUDINARY_UPLOAD_PRESET = "Biditwinit";
 
   const [profilePic, setProfilePic] = useState(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+
+  // UI-only state
+  const [focused, setFocused] = useState(null);
+  const pulse = useRef(new Animated.Value(0.1)).current;
+
+  // Pulsing gold spotlight
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.26,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
 
   const avatars = [
     {
@@ -56,7 +97,6 @@ export default function Signup() {
       uri: "https://api.dicebear.com/9.x/adventurer/png?seed=Oliver&size=256",
     },
   ];
-
 
   const PickCustomImage = async () => {
     try {
@@ -92,184 +132,189 @@ export default function Signup() {
     setShowAvatarModal(false);
   };
 
- 
-const UploadToCloudinary = async (imageUri) => {
-  const formData = new FormData();
+  const UploadToCloudinary = async (imageUri) => {
+    const formData = new FormData();
 
-  if (imageUri.startsWith("http")) {
-    // Predefined avatar URL
-    formData.append("file", imageUri);
-  } else {
-    // Custom gallery image
-    const file = new File(imageUri);
-    formData.append("file", file);
-  }
+    if (imageUri.startsWith("http")) {
+      // Predefined avatar URL
+      formData.append("file", imageUri);
+    } else {
+      // Custom gallery image
+      const file = new File(imageUri);
+      formData.append("file", file);
+    }
 
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  formData.append("folder", "biditwinit");
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("folder", "biditwinit");
 
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-    {
-      method: "POST",
-      body: formData,
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error?.message || "Image upload failed");
-  }
-
-  return data.secure_url;
-};
-
-
-  
-const HandleSignup = async () => {
-  // 1. Name validation
-  if (!name.trim()) {
-    Toast.show({
-      type: "error",
-      text1: "Name is required",
-    });
-    return;
-  }
-
-  // 2. Email validation
-  if (!email.trim()) {
-    Toast.show({
-      type: "error",
-      text1: "Email is required",
-    });
-    return;
-  }
-
-  // Valid email format: example@gmail.com, example@yahoo.com
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
-
-  if (!emailRegex.test(email.trim())) {
-    Toast.show({
-      type: "error",
-      text1: "Please enter a valid email address",
-      text2: "Example: example@gmail.com",
-    });
-    return;
-  }
-
-  // 3. Password validation
-  if (!password.trim()) {
-    Toast.show({
-      type: "error",
-      text1: "Password is required",
-    });
-    return;
-  }
-
-  if (password.length < 6) {
-    Toast.show({
-      type: "error",
-      text1: "Password must be at least 6 characters",
-    });
-    return;
-  }
-
-  // 4. Confirm password validation
-  if (!confirmPassword.trim()) {
-    Toast.show({
-      type: "error",
-      text1: "Please confirm your password",
-    });
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    Toast.show({
-      type: "error",
-      text1: "Confirm password does not match",
-    });
-    return;
-  }
-
-  setLoading(true);
-
-  let createdUser = null;
-  let profileCreated = false;
-
-  try {
-    // Create Firebase Authentication account
-    const userCredential = await createUserWithEmailAndPassword(
-      auth,
-      email.trim(),
-      password,
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      {
+        method: "POST",
+        body: formData,
+      },
     );
 
-    createdUser = userCredential.user;
+    const data = await response.json();
 
-    // Upload selected image or default avatar
-    const imageToUpload = profilePic || avatars[0].uri;
+    if (!response.ok) {
+      throw new Error(data.error?.message || "Image upload failed");
+    }
 
-    const uploadedProfilePic = await UploadToCloudinary(imageToUpload);
+    return data.secure_url;
+  };
 
-    const startingCoins = 10000;
+  const HandleSignup = async () => {
+    // 1. Name validation
+    if (!name.trim()) {
+      Toast.show({
+        type: "error",
+        text1: "Name is required",
+      });
+      return;
+    }
 
-    const playerId = Math.floor(100000 + Math.random() * 900000);
+    // 2. Email validation
+    if (!email.trim()) {
+      Toast.show({
+        type: "error",
+        text1: "Email is required",
+      });
+      return;
+    }
 
-    // Save user profile in Firestore
-    await setDoc(doc(firestore, "users", createdUser.uid), {
-      uid: createdUser.uid,
-      name: name.trim(),
-      email: email.trim(),
-      coins: startingCoins,
-      createdAt: Date.now(),
-      playerId: playerId,
-      activeRoom: "",
-      profilePic: uploadedProfilePic,
-    });
+    // Valid email format: example@gmail.com, example@yahoo.com
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 
-    profileCreated = true;
+    if (!emailRegex.test(email.trim())) {
+      Toast.show({
+        type: "error",
+        text1: "Please enter a valid email address",
+        text2: "Example: example@gmail.com",
+      });
+      return;
+    }
 
-    Toast.show({
-      type: "success",
-      text1: "Account Created!",
-      text2: `${startingCoins} coins added to your account.`,
-    });
+    // 3. Password validation
+    if (!password.trim()) {
+      Toast.show({
+        type: "error",
+        text1: "Password is required",
+      });
+      return;
+    }
 
-    router.replace("/(drawer)/Home");
-  } catch (error) {
-    console.log("Signup error:", error);
+    if (password.length < 6) {
+      Toast.show({
+        type: "error",
+        text1: "Password must be at least 6 characters",
+      });
+      return;
+    }
 
-    // Remove incomplete Firebase account if profile was not saved
-    if (createdUser && !profileCreated) {
-      try {
-        await deleteUser(createdUser);
-        console.log("Incomplete Firebase account deleted");
-      } catch (deleteError) {
-        console.log("Account cleanup error:", deleteError);
+    // 4. Confirm password validation
+    if (!confirmPassword.trim()) {
+      Toast.show({
+        type: "error",
+        text1: "Please confirm your password",
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Toast.show({
+        type: "error",
+        text1: "Confirm password does not match",
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    let createdUser = null;
+    let profileCreated = false;
+
+    try {
+      // Create Firebase Authentication account
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password,
+      );
+
+      createdUser = userCredential.user;
+
+      // Upload selected image or default avatar
+      const imageToUpload = profilePic || avatars[0].uri;
+
+      const uploadedProfilePic = await UploadToCloudinary(imageToUpload);
+
+      const startingCoins = 10000;
+
+      const playerId = Math.floor(100000 + Math.random() * 900000);
+
+      // Save user profile in Firestore
+      await setDoc(doc(firestore, "users", createdUser.uid), {
+        uid: createdUser.uid,
+        name: name.trim(),
+        email: email.trim(),
+        coins: startingCoins,
+        createdAt: Date.now(),
+        playerId: playerId,
+        activeRoom: "",
+        profilePic: uploadedProfilePic,
+      });
+
+      profileCreated = true;
+
+      Toast.show({
+        type: "success",
+        text1: "Account Created!",
+        text2: `${startingCoins} coins added to your account.`,
+      });
+
+      router.replace("/(drawer)/Home");
+    } catch (error) {
+      console.log("Signup error:", error);
+
+      // Remove incomplete Firebase account if profile was not saved
+      if (createdUser && !profileCreated) {
+        try {
+          await deleteUser(createdUser);
+          console.log("Incomplete Firebase account deleted");
+        } catch (deleteError) {
+          console.log("Account cleanup error:", deleteError);
+        }
       }
+
+      let errorMessage = error.message;
+
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This email is already registered. Please login.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Please enter a valid email address.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "Password must be at least 6 characters.";
+      }
+
+      Toast.show({
+        type: "error",
+        text1: "Signup Failed",
+        text2: errorMessage,
+      });
+    } finally {
+      setLoading(false);
     }
+  };
 
-    let errorMessage = error.message;
-
-    if (error.code === "auth/email-already-in-use") {
-      errorMessage = "This email is already registered. Please login.";
-    } else if (error.code === "auth/invalid-email") {
-      errorMessage = "Please enter a valid email address.";
-    } else if (error.code === "auth/weak-password") {
-      errorMessage = "Password must be at least 6 characters.";
+  const onSignupPress = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch (e) {
+      // haptics not available, ignore
     }
-
-    Toast.show({
-      type: "error",
-      text1: "Signup Failed",
-      text2: errorMessage,
-    });
-  } finally {
-    setLoading(false);
-  }
-};
-
+    HandleSignup();
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -282,7 +327,7 @@ const HandleSignup = async () => {
         <StatusBar hidden />
 
         {/* Background glow */}
-        <View style={styles.glowTop} />
+        <Animated.View style={[styles.glowTop, { opacity: pulse }]} />
         <View style={styles.glowBottom} />
 
         <ScrollView
@@ -313,29 +358,29 @@ const HandleSignup = async () => {
                   style={styles.profileImage}
                 />
               ) : (
-                <Text style={styles.profilePlaceholder}>♙</Text>
+                <Ionicons name="person" size={46} color={COLORS.gold} />
               )}
 
               <View style={styles.cameraIcon}>
-                <Text style={styles.cameraIconText}>+</Text>
+                <Ionicons name="camera" size={15} color="#1A1200" />
               </View>
             </TouchableOpacity>
 
             <Text style={styles.profileTitle}>PROFILE PICTURE</Text>
 
             <Text style={styles.profileSubtitle}>
-              Choose your gaming avatar
+              Choose your bidder avatar
             </Text>
           </View>
 
           {/* Heading */}
           <View style={styles.headingContainer}>
             <Text style={styles.heading}>
-              Create <Text style={styles.headingBlue}>Account</Text>
+              Join the <Text style={styles.headingGold}>Auction</Text>
             </Text>
 
             <Text style={styles.subtitle}>
-              Join the game. Make every bid count.
+              Start with 10,000 coins. Make every bid count.
             </Text>
           </View>
 
@@ -344,52 +389,91 @@ const HandleSignup = async () => {
             {/* Name */}
             <Text style={styles.label}>FULL NAME</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>♙</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "name" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="person-outline"
+                size={20}
+                color={focused === "name" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Enter your full name"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
                 autoCorrect={false}
+                onFocus={() => setFocused("name")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
             </View>
 
             {/* Email */}
             <Text style={styles.label}>EMAIL ADDRESS</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>✉</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "email" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color={focused === "email" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Enter your email"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
             </View>
 
             {/* Password */}
             <Text style={styles.label}>PASSWORD</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>⌑</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "password" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color={focused === "password" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Create a password"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
 
               <TouchableOpacity
@@ -405,17 +489,30 @@ const HandleSignup = async () => {
             {/* Confirm Password */}
             <Text style={styles.label}>CONFIRM PASSWORD</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>⌑</Text>
+            <View
+              style={[
+                styles.inputContainer,
+                focused === "confirm" && styles.inputFocused,
+              ]}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={20}
+                color={focused === "confirm" ? COLORS.gold : COLORS.muted}
+                style={styles.inputIcon}
+              />
 
               <TextInput
                 placeholder="Re-enter your password"
-                placeholderTextColor="#64748B"
+                placeholderTextColor={COLORS.placeholder}
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
+                onFocus={() => setFocused("confirm")}
+                onBlur={() => setFocused(null)}
+                selectionColor={COLORS.gold}
               />
 
               <TouchableOpacity
@@ -430,13 +527,25 @@ const HandleSignup = async () => {
 
             {/* Signup button */}
             <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.signupButton}
-              onPress={HandleSignup}
+              activeOpacity={0.85}
+              style={[styles.signupButtonWrap, loading && { opacity: 0.7 }]}
+              onPress={onSignupPress}
             >
-              <Text style={styles.signupButtonText}>CREATE ACCOUNT</Text>
+              <LinearGradient
+                colors={[COLORS.goldLight, COLORS.goldDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.signupButton}
+              >
+                <Text style={styles.signupButtonText}>CLAIM YOUR SEAT</Text>
 
-              <Text style={styles.arrow}>→</Text>
+                <Ionicons
+                  name="hammer"
+                  size={22}
+                  color="#1A1200"
+                  style={styles.arrow}
+                />
+              </LinearGradient>
             </TouchableOpacity>
 
             {/* Login link */}
@@ -475,7 +584,7 @@ const HandleSignup = async () => {
                     <Text style={styles.modalTitle}>Choose Avatar</Text>
 
                     <Text style={styles.modalSubtitle}>
-                      Select your gaming profile picture
+                      Pick the face your rivals will fear
                     </Text>
                   </View>
 
@@ -483,7 +592,7 @@ const HandleSignup = async () => {
                     onPress={() => setShowAvatarModal(false)}
                     style={styles.closeButton}
                   >
-                    <Text style={styles.closeButtonText}>✕</Text>
+                    <Ionicons name="close" size={18} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
 
@@ -509,7 +618,11 @@ const HandleSignup = async () => {
 
                         {isSelected && (
                           <View style={styles.selectedCheck}>
-                            <Text style={styles.selectedCheckText}>✓</Text>
+                            <Ionicons
+                              name="checkmark"
+                              size={15}
+                              color="#1A1200"
+                            />
                           </View>
                         )}
                       </TouchableOpacity>
@@ -523,7 +636,12 @@ const HandleSignup = async () => {
                   style={styles.customImageButton}
                   onPress={PickCustomImage}
                 >
-                  <Text style={styles.customImageIcon}>＋</Text>
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={28}
+                    color={COLORS.gold}
+                    style={{ marginRight: 13 }}
+                  />
 
                   <View style={{ flex: 1 }}>
                     <Text style={styles.customImageTitle}>
@@ -535,7 +653,11 @@ const HandleSignup = async () => {
                     </Text>
                   </View>
 
-                  <Text style={styles.customImageArrow}>→</Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={COLORS.gold}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
@@ -549,7 +671,7 @@ const HandleSignup = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     overflow: "hidden",
   },
 
@@ -562,12 +684,11 @@ const styles = StyleSheet.create({
 
   glowTop: {
     position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: "#164EAD",
-    opacity: 0.16,
-    top: -130,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: COLORS.goldDark,
+    top: -140,
     right: -110,
   },
 
@@ -577,7 +698,7 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: "#7C3AED",
-    opacity: 0.1,
+    opacity: 0.12,
     bottom: -120,
     left: -120,
   },
@@ -606,23 +727,23 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 55,
-    backgroundColor: "#131D31",
+    backgroundColor: COLORS.card,
     borderWidth: 2,
-    borderColor: "#38BDF8",
+    borderColor: COLORS.gold,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
+    shadowColor: COLORS.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
   },
 
   profileImage: {
     width: "100%",
     height: "100%",
     borderRadius: 55,
-  },
-
-  profilePlaceholder: {
-    color: "#38BDF8",
-    fontSize: 48,
   },
 
   cameraIcon: {
@@ -632,28 +753,22 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "#1D8FE1",
+    backgroundColor: COLORS.gold,
     borderWidth: 2,
-    borderColor: "#0B1020",
+    borderColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  cameraIconText: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "bold",
-  },
-
   profileTitle: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1.2,
   },
 
   profileSubtitle: {
-    color: "#64748B",
+    color: COLORS.placeholder,
     fontSize: 11,
     marginTop: 5,
   },
@@ -662,7 +777,7 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.82)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 22,
@@ -670,10 +785,10 @@ const styles = StyleSheet.create({
 
   modalContainer: {
     width: "100%",
-    backgroundColor: "#131D31",
+    backgroundColor: COLORS.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#293A56",
+    borderColor: "rgba(251,191,36,0.35)",
     padding: 22,
   },
 
@@ -685,13 +800,13 @@ const styles = StyleSheet.create({
   },
 
   modalTitle: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 21,
     fontWeight: "900",
   },
 
   modalSubtitle: {
-    color: "#94A3B8",
+    color: COLORS.muted,
     fontSize: 11,
     marginTop: 6,
   },
@@ -703,11 +818,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#25344D",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  closeButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
   },
 
   avatarGrid: {
@@ -722,16 +832,16 @@ const styles = StyleSheet.create({
     width: "43%",
     aspectRatio: 1,
     borderRadius: 18,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     borderWidth: 2,
-    borderColor: "#293A56",
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
 
   selectedAvatar: {
-    borderColor: "#38BDF8",
+    borderColor: COLORS.gold,
   },
 
   avatarOptionImage: {
@@ -746,62 +856,46 @@ const styles = StyleSheet.create({
     width: 23,
     height: 23,
     borderRadius: 12,
-    backgroundColor: "#1D8FE1",
+    backgroundColor: COLORS.gold,
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  selectedCheckText: {
-    color: "#FFFFFF",
-    fontWeight: "900",
   },
 
   customImageButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     borderWidth: 1,
-    borderColor: "#293A56",
+    borderColor: COLORS.border,
     borderRadius: 15,
     padding: 15,
   },
 
-  customImageIcon: {
-    color: "#38BDF8",
-    fontSize: 27,
-    marginRight: 13,
-  },
-
   customImageTitle: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 13,
     fontWeight: "800",
   },
 
   customImageSubtitle: {
-    color: "#64748B",
+    color: COLORS.placeholder,
     fontSize: 10,
     marginTop: 5,
   },
 
-  customImageArrow: {
-    color: "#38BDF8",
-    fontSize: 22,
-  },
-
   heading: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 29,
     fontWeight: "900",
     letterSpacing: 0.3,
   },
 
-  headingBlue: {
-    color: "#38BDF8",
+  headingGold: {
+    color: COLORS.gold,
   },
 
   subtitle: {
-    color: "#94A3B8",
+    color: COLORS.muted,
     fontSize: 13,
     marginTop: 9,
     textAlign: "center",
@@ -812,7 +906,7 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: "#CBD5E1",
+    color: COLORS.label,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.5,
@@ -824,23 +918,25 @@ const styles = StyleSheet.create({
     minHeight: 55,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#131D31",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#293A56",
+    borderColor: COLORS.border,
     borderRadius: 14,
     paddingHorizontal: 14,
   },
 
+  inputFocused: {
+    borderColor: COLORS.gold,
+    backgroundColor: "#1A2538",
+  },
+
   inputIcon: {
-    color: "#38BDF8",
-    fontSize: 19,
     width: 29,
-    textAlign: "left",
   },
 
   input: {
     flex: 1,
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontSize: 13,
     paddingVertical: 14,
   },
@@ -851,39 +947,40 @@ const styles = StyleSheet.create({
   },
 
   showText: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.8,
   },
 
+  signupButtonWrap: {
+    marginTop: 30,
+    borderRadius: 16,
+    shadowColor: COLORS.goldDark,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+
   signupButton: {
     height: 58,
     borderRadius: 16,
-    backgroundColor: "#1D8FE1",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 30,
-    shadowColor: "#1D8FE1",
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
   },
 
   signupButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+    color: "#1A1200",
+    fontSize: 14,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 2,
   },
 
   arrow: {
     position: "absolute",
     right: 18,
-    color: "#FFFFFF",
-    fontSize: 24,
   },
 
   loginContainer: {
@@ -895,12 +992,12 @@ const styles = StyleSheet.create({
   },
 
   loginText: {
-    color: "#94A3B8",
+    color: COLORS.muted,
     fontSize: 12,
   },
 
   loginLink: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 12,
     fontWeight: "800",
   },
@@ -915,12 +1012,13 @@ const styles = StyleSheet.create({
   footerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#273247",
+    backgroundColor: COLORS.line,
   },
 
   footerText: {
-    color: "#64748B",
-    fontSize: 8,
+    color: COLORS.gold,
+    opacity: 0.8,
+    fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.8,
   },

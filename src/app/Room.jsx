@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,11 @@ import {
   ImageBackground,
   Image,
   Alert,
+  Animated,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Instruction from "./components/Instruction";
 import Toast from "react-native-toast-message";
@@ -21,6 +25,17 @@ import LeaveRoom from "./components/LeaveRoom";
 import { startGame } from "./Rooms/startGame";
 import { useRoomPresence } from "./Hooks/useRoomPresence";
 import { useBlockBack } from "./Hooks/useBlockBack";
+
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  border: "#293A56",
+  muted: "#94A3B8",
+  dark: "#1A1200",
+};
 
 export default function Room() {
   const { user, loading: authLoading } = useAuth();
@@ -35,6 +50,28 @@ export default function Room() {
   const [starting, setStarting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [leaving, setLeaving] = useState(false);
+
+  // UI-only: pulsing gold spotlight
+  const pulse = useRef(new Animated.Value(0.1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.26,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
 
   useEffect(() => {
     if (loading || !currentUserId) return;
@@ -78,6 +115,15 @@ export default function Room() {
     } finally {
       setStarting(false);
     }
+  };
+
+  const onStartPress = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch (e) {
+      // haptics not available, ignore
+    }
+    handleStartGame();
   };
 
   useEffect(() => {
@@ -130,6 +176,8 @@ export default function Room() {
   return (
     <View style={styles.screen}>
       <Bubbels />
+      <Animated.View style={[styles.glowTop, { opacity: pulse }]} />
+
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
@@ -137,7 +185,11 @@ export default function Room() {
         <View style={styles.header}>
           <View style={styles.headerCenter}>
             <Text style={styles.title}>Online Room</Text>
-            <Text style={styles.roomName}>{roomId}</Text>
+
+            <View style={styles.roomCodeChip}>
+              <Ionicons name="key" size={12} color={COLORS.gold} />
+              <Text style={styles.roomName}>{roomId}</Text>
+            </View>
           </View>
 
           <View style={styles.headerButton}>
@@ -168,7 +220,9 @@ export default function Room() {
         </View>
         {/* Character Table */}
         <View style={styles.tableWrapper}>
-          <Text style={styles.waiting}>
+          <Text
+            style={[styles.waiting, players.length >= 5 && styles.waitingReady]}
+          >
             {players.length < 5
               ? `Waiting for ${5 - players.length} more player(s)...`
               : "All players are ready!"}
@@ -204,7 +258,11 @@ export default function Room() {
                       />
                     ) : (
                       <View style={styles.emptyAvatar}>
-                        <Text style={styles.plus}>+</Text>
+                        <Ionicons
+                          name="add"
+                          size={24}
+                          color="rgba(251, 191, 36, 0.7)"
+                        />
                       </View>
                     )}
                   </View>
@@ -228,14 +286,26 @@ export default function Room() {
         <View style={styles.actionButtons}>
           {hostId === currentUserId && roomStatus === "waiting" && (
             <TouchableOpacity
-              style={[styles.startButton, starting && styles.disabledButton]}
-              onPress={handleStartGame}
+              style={[styles.startWrap, starting && styles.disabledButton]}
+              onPress={onStartPress}
               disabled={starting}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <Text style={styles.startButtonText}>
-                {starting ? "STARTING..." : "▶ START"}
-              </Text>
+              <LinearGradient
+                colors={[COLORS.goldLight, COLORS.goldDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.startButton}
+              >
+                <Ionicons
+                  name={starting ? "hourglass" : "hammer"}
+                  size={20}
+                  color={COLORS.dark}
+                />
+                <Text style={styles.startButtonText}>
+                  {starting ? "STARTING..." : "START THE AUCTION"}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
           )}
         </View>
@@ -247,8 +317,18 @@ export default function Room() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#07111F",
+    backgroundColor: COLORS.bg,
     overflow: "hidden",
+  },
+
+  glowTop: {
+    position: "absolute",
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: COLORS.goldDark,
+    top: -150,
+    right: -110,
   },
 
   container: {
@@ -289,18 +369,31 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  roomCodeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.45)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 6,
+  },
+
   roomName: {
-    color: "#00D9FF",
-    fontSize: 15,
-    fontWeight: "700",
+    color: COLORS.gold,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2,
     textAlign: "center",
-    marginTop: 5,
   },
   countBox: {
     alignSelf: "center",
-    backgroundColor: "#122B40",
+    backgroundColor: "rgba(251, 191, 36, 0.10)",
     borderWidth: 1,
-    borderColor: "#24536D",
+    borderColor: "rgba(251, 191, 36, 0.45)",
     paddingHorizontal: 20,
     paddingVertical: 20,
     borderRadius: 20,
@@ -309,7 +402,7 @@ const styles = StyleSheet.create({
   },
 
   count: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 1,
@@ -326,9 +419,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: "#122B40",
-    borderWidth: 1,
-    borderColor: "#80652D",
+    backgroundColor: "#1B1A14",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -340,7 +433,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 13,
-    backgroundColor: "#3B3423",
+    backgroundColor: "rgba(251, 191, 36, 0.16)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -355,14 +448,15 @@ const styles = StyleSheet.create({
   },
 
   coinLabel: {
-    color: "#A8B7CA",
+    color: "#FDE68A",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
+    opacity: 0.8,
   },
 
   coins: {
-    color: "#FFD166",
+    color: COLORS.goldLight,
     fontSize: 20,
     fontWeight: "900",
   },
@@ -422,14 +516,14 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: "#263D57",
     borderWidth: 3,
-    borderColor: "#FFFFFF",
+    borderColor: "#475569",
     padding: 2,
     alignItems: "center",
     justifyContent: "center",
   },
 
   activeProfile: {
-    borderColor: "#00D9FF",
+    borderColor: COLORS.gold,
   },
 
   profileImage: {
@@ -447,16 +541,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  plus: {
-    color: "#00D9FF",
-    fontSize: 25,
-    fontWeight: "400",
-  },
-
   nameTag: {
-    backgroundColor: "#07111F",
+    backgroundColor: COLORS.bg,
     borderWidth: 1,
-    borderColor: "#24536D",
+    borderColor: "rgba(251, 191, 36, 0.45)",
     borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 4,
@@ -472,18 +560,24 @@ const styles = StyleSheet.create({
   },
 
   hostBadge: {
-    color: "#FFD166",
+    color: COLORS.goldLight,
     fontSize: 10,
     fontWeight: "900",
     marginTop: 3,
   },
 
   waiting: {
-    color: "#A8B7CA",
+    color: COLORS.muted,
     fontSize: 13,
     textAlign: "center",
     marginTop: 20,
   },
+
+  waitingReady: {
+    color: COLORS.gold,
+    fontWeight: "800",
+  },
+
   actionButtons: {
     flexDirection: "row",
     alignItems: "space-around",
@@ -492,41 +586,30 @@ const styles = StyleSheet.create({
     marginTop: 25,
   },
 
-  startButton: {
+  startWrap: {
     flex: 1,
-    backgroundColor: "#00D9FF",
+    borderRadius: 14,
+    shadowColor: COLORS.goldDark,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+
+  startButton: {
     paddingVertical: 16,
     borderRadius: 14,
+    flexDirection: "row",
+    gap: 8,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#55E8FF",
-    elevation: 5,
   },
 
   startButtonText: {
-    color: "#07111F",
+    color: COLORS.dark,
     fontSize: 14,
     fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-
-  leaveButton: {
-    flex: 1,
-    backgroundColor: "#18283B",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D9364F",
-  },
-
-  leaveText: {
-    color: "#FF6478",
-    fontWeight: "900",
-    fontSize: 13,
-    letterSpacing: 0.5,
+    letterSpacing: 1.5,
   },
 
   disabledButton: {

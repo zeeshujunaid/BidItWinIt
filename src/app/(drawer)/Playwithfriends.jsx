@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,8 +8,11 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { ref, get, runTransaction, remove } from "firebase/database";
@@ -19,6 +22,25 @@ import { db, firestore } from "../utils/Firebase";
 import { useAuth } from "../context/Authcontext";
 import { MAX_PLAYERS, ROOM_STATUS } from "../Rooms/constants";
 
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  border: "#293A56",
+  muted: "#94A3B8",
+  dark: "#1A1200",
+};
+
+const tap = () => {
+  try {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  } catch (e) {
+    // haptics not available, ignore
+  }
+};
+
 export default function Playwithfriends() {
   const router = useRouter();
   const { user } = useAuth();
@@ -27,6 +49,28 @@ export default function Playwithfriends() {
   const [joinVisible, setJoinVisible] = useState(false);
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
+
+  // UI-only: pulsing gold spotlight
+  const pulse = useRef(new Animated.Value(0.1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.26,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
 
   // ---------- CREATE ROOM ----------
   const handleCreateRoom = async () => {
@@ -245,6 +289,10 @@ export default function Playwithfriends() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
+        {/* Background glow */}
+        <Animated.View style={[styles.glow, { opacity: pulse }]} />
+        <View style={styles.bottomGlow} />
+
         {/* Heading */}
         <View style={styles.heading}>
           <Text style={styles.eyebrow}>PLAY TOGETHER</Text>
@@ -255,51 +303,64 @@ export default function Playwithfriends() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Create or join a room and start bidding together!
+            Create or join a room and outbid your friends!
           </Text>
         </View>
 
         {/* Create Room */}
         <TouchableOpacity
           activeOpacity={0.85}
-          style={[styles.createButton, creating && styles.disabled]}
-          onPress={handleCreateRoom}
+          style={[styles.createWrap, creating && styles.disabled]}
+          onPress={() => {
+            tap();
+            handleCreateRoom();
+          }}
           disabled={creating}
         >
-          <View style={styles.buttonIcon}>
-            {creating ? (
-              <ActivityIndicator color="#171321" />
-            ) : (
-              <Ionicons name="add-circle" size={27} color="#171321" />
-            )}
-          </View>
+          <LinearGradient
+            colors={[COLORS.goldLight, COLORS.goldDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.createButton}
+          >
+            <View style={styles.buttonIcon}>
+              {creating ? (
+                <ActivityIndicator color={COLORS.dark} />
+              ) : (
+                <Ionicons name="add-circle" size={27} color={COLORS.dark} />
+              )}
+            </View>
 
-          <View style={styles.buttonContent}>
-            <Text style={styles.createTitle}>Create Room</Text>
-            <Text style={styles.createSubtitle}>
-              {creating ? "Creating room..." : "Start a new private auction"}
-            </Text>
-          </View>
+            <View style={styles.buttonContent}>
+              <Text style={styles.createTitle}>Create Room</Text>
+              <Text style={styles.createSubtitle}>
+                {creating ? "Creating room..." : "Start a new private auction"}
+              </Text>
+            </View>
 
-          <Ionicons name="arrow-forward" size={23} color="#171321" />
+            <Ionicons name="hammer" size={23} color={COLORS.dark} />
+          </LinearGradient>
         </TouchableOpacity>
 
         {/* Join Room */}
         <TouchableOpacity
           activeOpacity={0.85}
           style={styles.joinButton}
-          onPress={handleJoinRoom}
+          onPress={() => {
+            tap();
+            handleJoinRoom();
+          }}
         >
           <View style={styles.joinIcon}>
-            <Ionicons name="enter-outline" size={27} color="#F5C76B" />
+            <Ionicons name="enter-outline" size={27} color={COLORS.gold} />
           </View>
 
           <View style={styles.buttonContent}>
             <Text style={styles.joinTitle}>Join Room</Text>
-            <Text style={styles.joinSubtitle}>Enter a friend's room</Text>
+            <Text style={styles.joinSubtitle}>Enter a friend's room code</Text>
           </View>
 
-          <Ionicons name="arrow-forward" size={23} color="#F5C76B" />
+          <Ionicons name="arrow-forward" size={23} color={COLORS.gold} />
         </TouchableOpacity>
 
         {/* Why Play Together */}
@@ -309,7 +370,7 @@ export default function Playwithfriends() {
           <View style={styles.features}>
             <View style={styles.feature}>
               <View style={styles.featureIcon}>
-                <Ionicons name="people" size={24} color="#F5C76B" />
+                <Ionicons name="people" size={24} color={COLORS.gold} />
               </View>
               <Text style={styles.featureTitle}>Friends</Text>
               <Text style={styles.featureDescription}>
@@ -319,15 +380,15 @@ export default function Playwithfriends() {
 
             <View style={styles.feature}>
               <View style={styles.featureIcon}>
-                <Ionicons name="game-controller" size={24} color="#F5C76B" />
+                <Ionicons name="flame" size={24} color={COLORS.gold} />
               </View>
-              <Text style={styles.featureTitle}>More Fun</Text>
-              <Text style={styles.featureDescription}>Enjoy every auction</Text>
+              <Text style={styles.featureTitle}>Rivalry</Text>
+              <Text style={styles.featureDescription}>Outbid your friends</Text>
             </View>
 
             <View style={styles.feature}>
               <View style={styles.featureIcon}>
-                <Ionicons name="trophy" size={24} color="#F5C76B" />
+                <Ionicons name="trophy" size={24} color={COLORS.gold} />
               </View>
               <Text style={styles.featureTitle}>Big Wins</Text>
               <Text style={styles.featureDescription}>Compete and win</Text>
@@ -337,7 +398,9 @@ export default function Playwithfriends() {
 
         {/* Footer */}
         <View style={styles.footer}>
+          <View style={styles.footerLine} />
           <Text style={styles.footerText}>BID IT. WIN IT. TOGETHER.</Text>
+          <View style={styles.footerLine} />
         </View>
       </ScrollView>
 
@@ -351,6 +414,10 @@ export default function Playwithfriends() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
+            <View style={styles.modalIcon}>
+              <Ionicons name="key" size={22} color={COLORS.gold} />
+            </View>
+
             <Text style={styles.modalTitle}>Join a room</Text>
             <Text style={styles.modalSubtitle}>
               Enter the 5-digit code from your friend.
@@ -366,6 +433,7 @@ export default function Playwithfriends() {
               keyboardType="number-pad"
               maxLength={5}
               autoFocus
+              selectionColor={COLORS.gold}
               style={styles.codeInput}
             />
 
@@ -380,17 +448,27 @@ export default function Playwithfriends() {
 
               <TouchableOpacity
                 style={[
-                  styles.confirmButton,
+                  styles.confirmWrap,
                   (code.length !== 5 || joining) && styles.disabled,
                 ]}
-                onPress={submitJoin}
+                onPress={() => {
+                  tap();
+                  submitJoin();
+                }}
                 disabled={code.length !== 5 || joining}
               >
-                {joining ? (
-                  <ActivityIndicator color="#171321" />
-                ) : (
-                  <Text style={styles.confirmText}>Join</Text>
-                )}
+                <LinearGradient
+                  colors={[COLORS.goldLight, COLORS.goldDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.confirmButton}
+                >
+                  {joining ? (
+                    <ActivityIndicator color={COLORS.dark} />
+                  ) : (
+                    <Text style={styles.confirmText}>JOIN</Text>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
@@ -403,7 +481,28 @@ export default function Playwithfriends() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
+  },
+
+  glow: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: COLORS.goldDark,
+    top: -140,
+    right: -100,
+  },
+
+  bottomGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "#7C3AED",
+    opacity: 0.1,
+    bottom: -120,
+    left: -90,
   },
 
   content: {
@@ -413,11 +512,11 @@ const styles = StyleSheet.create({
   },
 
   heading: {
-    marginBottom: 22,
+    marginBottom: 24,
   },
 
   eyebrow: {
-    color: "#D9A441",
+    color: COLORS.gold,
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 2,
@@ -432,31 +531,39 @@ const styles = StyleSheet.create({
   },
 
   goldText: {
-    color: "#F5C76B",
+    color: COLORS.gold,
   },
 
   subtitle: {
-    color: "#9BA8BD",
+    color: COLORS.muted,
     fontSize: 13,
     lineHeight: 20,
     marginTop: 10,
   },
 
+  createWrap: {
+    borderRadius: 18,
+    marginBottom: 13,
+    shadowColor: COLORS.goldDark,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+
   createButton: {
     minHeight: 76,
-    backgroundColor: "#F5C76B",
     borderRadius: 18,
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 13,
   },
 
   buttonIcon: {
     width: 43,
     height: 43,
     borderRadius: 13,
-    backgroundColor: "#E5B654",
+    backgroundColor: "rgba(26, 18, 0, 0.15)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 13,
@@ -467,23 +574,23 @@ const styles = StyleSheet.create({
   },
 
   createTitle: {
-    color: "#171321",
+    color: COLORS.dark,
     fontSize: 17,
     fontWeight: "900",
   },
 
   createSubtitle: {
-    color: "#59451F",
+    color: "#5C4510",
     fontSize: 11,
     marginTop: 4,
   },
 
   joinButton: {
     minHeight: 76,
-    backgroundColor: "#151B2D",
+    backgroundColor: COLORS.card,
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: "#A77B32",
+    borderColor: "rgba(251, 191, 36, 0.55)",
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -494,20 +601,20 @@ const styles = StyleSheet.create({
     width: 43,
     height: 43,
     borderRadius: 13,
-    backgroundColor: "#302A25",
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 13,
   },
 
   joinTitle: {
-    color: "#F5C76B",
+    color: COLORS.gold,
     fontSize: 17,
     fontWeight: "900",
   },
 
   joinSubtitle: {
-    color: "#9BA8BD",
+    color: COLORS.muted,
     fontSize: 11,
     marginTop: 4,
   },
@@ -517,7 +624,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    color: "#F5C76B",
+    color: COLORS.gold,
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1.7,
@@ -532,9 +639,9 @@ const styles = StyleSheet.create({
 
   feature: {
     flex: 1,
-    backgroundColor: "#151B2D",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#29344A",
+    borderColor: COLORS.border,
     borderRadius: 15,
     paddingVertical: 15,
     paddingHorizontal: 5,
@@ -545,7 +652,9 @@ const styles = StyleSheet.create({
     width: 43,
     height: 43,
     borderRadius: 22,
-    backgroundColor: "#302A25",
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.35)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
@@ -565,11 +674,20 @@ const styles = StyleSheet.create({
   },
 
   footer: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 10,
+  },
+
+  footerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#273247",
   },
 
   footerText: {
-    color: "#A77B32",
+    color: COLORS.gold,
+    opacity: 0.8,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 2,
@@ -581,7 +699,7 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -590,11 +708,23 @@ const styles = StyleSheet.create({
   modalBox: {
     width: "100%",
     maxWidth: 360,
-    backgroundColor: "#151B2D",
+    backgroundColor: COLORS.card,
     borderWidth: 1.5,
-    borderColor: "#A77B32",
+    borderColor: "rgba(251, 191, 36, 0.55)",
     borderRadius: 20,
     padding: 20,
+  },
+
+  modalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
   },
 
   modalTitle: {
@@ -604,7 +734,7 @@ const styles = StyleSheet.create({
   },
 
   modalSubtitle: {
-    color: "#9BA8BD",
+    color: COLORS.muted,
     fontSize: 12,
     marginTop: 6,
     marginBottom: 18,
@@ -614,9 +744,9 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#A77B32",
-    backgroundColor: "#0B1020",
-    color: "#F5C76B",
+    borderColor: COLORS.gold,
+    backgroundColor: COLORS.bg,
+    color: COLORS.gold,
     fontSize: 30,
     fontWeight: "900",
     letterSpacing: 12,
@@ -634,29 +764,33 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#29344A",
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
 
   cancelText: {
-    color: "#9BA8BD",
+    color: COLORS.muted,
     fontSize: 14,
     fontWeight: "800",
   },
 
-  confirmButton: {
+  confirmWrap: {
     flex: 1,
-    height: 50,
     borderRadius: 14,
-    backgroundColor: "#F5C76B",
+    overflow: "hidden",
+  },
+
+  confirmButton: {
+    height: 50,
     alignItems: "center",
     justifyContent: "center",
   },
 
   confirmText: {
-    color: "#171321",
+    color: COLORS.dark,
     fontSize: 14,
     fontWeight: "900",
+    letterSpacing: 1.5,
   },
 });

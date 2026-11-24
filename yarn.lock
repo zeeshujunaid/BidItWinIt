@@ -1020,7 +1020,7 @@
   dependencies:
     sf-symbols-typescript "^2.1.0"
 
-"@expo/vector-icons@^15.0.2":
+"@expo/vector-icons@^15.1.1":
   version "15.1.1"
   resolved "https://registry.yarnpkg.com/@expo/vector-icons/-/vector-icons-15.1.1.tgz#4b1d2c60493c0b0536972f0a5babd5f5c85b48f4"
   integrity sha512-Iu2VkcoI5vygbtYngm7jb4ifxElNVXQYdDrYkT7UCEIiKLeWnQY0wf2ZhHZ+Wro6Sc5TaumpKUOqDRpLi5rkvw==
@@ -2583,6 +2583,11 @@ expo-glass-effect@^58.0.5, expo-glass-effect@~58.0.5:
   resolved "https://registry.yarnpkg.com/expo-glass-effect/-/expo-glass-effect-58.0.5.tgz#dfc73c5c2b580dfb2656194184cced9d7b044228"
   integrity sha512-PkL1X/r0cTs6NG47Xp3TxRvtqSeRmPYhPOHp3GDmZB2oOxpjXge6qLi/bSSv0asFWqf+MLOlXZ+hq2Imuh0Z1g==
 
+expo-haptics@^58.0.8:
+  version "58.0.8"
+  resolved "https://registry.yarnpkg.com/expo-haptics/-/expo-haptics-58.0.8.tgz#f884ca7951b44414858f2c913095c2a9fb36f69c"
+  integrity sha512-hxW9LoJQhAJ4hRlGx0DZ10ncs2NFqC/0nfKSnGy1PcpH6e8dJ4/oJO9eOcAG/vFg8k5oonbZkWL7RK9G3729Tg==
+
 expo-image-loader@~58.0.3:
   version "58.0.3"
   resolved "https://registry.yarnpkg.com/expo-image-loader/-/expo-image-loader-58.0.3.tgz#a67add1a5a6545429ebefb3a5dc76c185964ad1a"
@@ -2606,6 +2611,11 @@ expo-keep-awake@~58.0.4:
   version "58.0.4"
   resolved "https://registry.yarnpkg.com/expo-keep-awake/-/expo-keep-awake-58.0.4.tgz#2e184c222bcf0870d246fc073220c021ba84d4cc"
   integrity sha512-zXJJRBwMpWl2Q2Aj9rksMe1ncz6aphOPqYnG3rTkCFALZiM22xQCqpQqBloDcQ6g4RdGTy++lRnsDX7MWpK1qw==
+
+expo-linear-gradient@^58.0.4:
+  version "58.0.4"
+  resolved "https://registry.yarnpkg.com/expo-linear-gradient/-/expo-linear-gradient-58.0.4.tgz#9f18e17db0084cc8fb90ee1ef4c28403d9ce75af"
+  integrity sha512-Zn6SilYGJPZ7jPZTksTS5i6Se7/rGjSurCEVFXLBAY+smdcLmbeiy8YV+svZDpAW0N2pFBi8LlgFzHTVshuRfg==
 
 expo-linking@~58.0.17:
   version "58.0.17"

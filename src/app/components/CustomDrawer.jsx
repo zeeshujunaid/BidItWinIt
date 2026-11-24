@@ -6,14 +6,23 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../context/Authcontext";
+
+const COLORS = {
+  bg: "#0B1020",
+  gold: "#FBBF24",
+  goldDark: "#F59E0B",
+  border: "#263752",
+};
+
 const MENU_ITEMS = [
-  { label: "Home", icon: "⌂", path: "/Home" },
-  { label: "Play with Friends", icon: "♟", path: "/Playwithfriends" },
-  { label: "Online Play", icon: "⚡", path: "/Onlineplay" },
-  { label: "Leaderboard", icon: "🏆", path: null },
-  { label: "Settings", icon: "⚙", path: null },
+  { label: "Home", icon: "home", path: "/Home" },
+  { label: "Play with Friends", icon: "people", path: "/Playwithfriends" },
+  { label: "Online Play", icon: "flash", path: "/Onlineplay" },
+  { label: "Leaderboard", icon: "trophy", path: null },
+  { label: "Settings", icon: "settings", path: null },
 ];
 
 export default function CustomDrawer(props) {
@@ -32,11 +41,13 @@ export default function CustomDrawer(props) {
   };
 
   if (loading) {
-    return <View style={{ height: 240, backgroundColor: "#0B1020" }} />;
+    return <View style={{ height: 240, backgroundColor: COLORS.bg }} />;
   }
 
   return (
     <View style={styles.container}>
+      <View style={styles.glowTop} />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -52,25 +63,31 @@ export default function CustomDrawer(props) {
 
         {/* Player Profile */}
         <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Image
-              source={{ uri: user?.profilePic }}
-              style={styles.avatar}
-              resizeMode="contain"
-            />
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatar}>
+              <Image
+                source={{ uri: user?.profilePic }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+            </View>
             <View style={styles.onlineDot} />
           </View>
 
           <View style={styles.profileInfo}>
-            <Text style={styles.welcome}>WELCOME BACK</Text>
-            <Text style={styles.playerName}> {user?.name || "Player"}</Text>
+            <Text style={styles.welcome}>WELCOME BACK, BIDDER</Text>
+            <Text style={styles.playerName} numberOfLines={1}>
+              {user?.name || "Player"}
+            </Text>
             <Text style={styles.uid}>#{user?.playerId ?? "------"}</Text>
           </View>
         </View>
 
         {/* Coins */}
         <View style={styles.coinsCard}>
-          <Text style={styles.coinEmoji}>🪙</Text>
+          <View style={styles.coinBadge}>
+            <Text style={styles.coinEmoji}>🪙</Text>
+          </View>
 
           <View style={styles.coinInfo}>
             <Text style={styles.coinLabel}>YOUR BALANCE</Text>
@@ -79,7 +96,7 @@ export default function CustomDrawer(props) {
             </Text>
           </View>
 
-          <Text style={styles.plus}>+</Text>
+          <Ionicons name="add-circle" size={26} color={COLORS.gold} />
         </View>
 
         {/* Menu */}
@@ -102,16 +119,25 @@ export default function CustomDrawer(props) {
                 }}
                 style={[styles.menuItem, active && styles.menuItemActive]}
               >
-                <Text
-                  style={[styles.menuIcon, active && styles.menuIconActive]}
-                >
-                  {item.icon}
-                </Text>
+                {active && <View style={styles.activeBar} />}
+
+                <Ionicons
+                  name={item.icon}
+                  size={22}
+                  color={active ? COLORS.gold : "#8EA3C0"}
+                  style={styles.menuIcon}
+                />
                 <Text
                   style={[styles.menuLabel, active && styles.menuLabelActive]}
                 >
                   {item.label}
                 </Text>
+
+                {!item.path && (
+                  <View style={styles.soonBadge}>
+                    <Text style={styles.soonText}>SOON</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -127,7 +153,7 @@ export default function CustomDrawer(props) {
         >
           <View style={styles.logoutLeft}>
             <View style={styles.logoutIconBox}>
-              <Text style={styles.logoutIcon}>⎋</Text>
+              <Ionicons name="log-out-outline" size={22} color="#F87171" />
             </View>
 
             <View>
@@ -138,7 +164,7 @@ export default function CustomDrawer(props) {
             </View>
           </View>
 
-          <Text style={styles.logoutArrow}>→</Text>
+          <Ionicons name="chevron-forward" size={20} color="#F87171" />
         </TouchableOpacity>
       </ScrollView>
 
@@ -148,11 +174,11 @@ export default function CustomDrawer(props) {
           <View style={styles.statusDot} />
 
           <View style={styles.statusInfo}>
-            <Text style={styles.statusTitle}>READY TO PLAY</Text>
+            <Text style={styles.statusTitle}>THE AUCTION IS LIVE</Text>
             <Text style={styles.statusSubtitle}>Your next win awaits.</Text>
           </View>
 
-          <Text style={styles.statusIcon}>⚡</Text>
+          <Ionicons name="hammer" size={22} color={COLORS.gold} />
         </View>
 
         <Text style={styles.version}>BID IT WIN IT • v1.0.0</Text>
@@ -164,9 +190,21 @@ export default function CustomDrawer(props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     borderRightWidth: 1,
-    borderRightColor: "#263752",
+    borderRightColor: COLORS.border,
+    overflow: "hidden",
+  },
+
+  glowTop: {
+    position: "absolute",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: COLORS.goldDark,
+    opacity: 0.12,
+    top: -130,
+    right: -100,
   },
 
   scrollContent: {
@@ -194,28 +232,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#121E32",
     borderWidth: 1,
-    borderColor: "#293D5A",
+    borderColor: "rgba(251, 191, 36, 0.3)",
     borderRadius: 16,
     padding: 13,
     marginBottom: 14,
     gap: 12,
   },
 
+  avatarWrap: {
+    width: 49,
+    height: 49,
+  },
+
   avatar: {
     width: 49,
     height: 49,
     borderRadius: 15,
-    backgroundColor: "#153B59",
+    backgroundColor: "#1B1A14",
     borderWidth: 1.5,
-    borderColor: "#38BDF8",
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: COLORS.gold,
+    overflow: "hidden",
   },
 
-  avatarText: {
-    color: "#FFFFFF",
-    fontSize: 23,
-    fontWeight: "900",
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
 
   onlineDot: {
@@ -235,15 +276,15 @@ const styles = StyleSheet.create({
   },
 
   welcome: {
-    color: "#38BDF8",
-    fontSize: 9,
+    color: COLORS.gold,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 1,
   },
 
   playerName: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
     marginTop: 4,
   },
@@ -257,17 +298,26 @@ const styles = StyleSheet.create({
   coinsCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#171D2D",
-    borderWidth: 1,
-    borderColor: "#5B4820",
+    backgroundColor: "#1B1A14",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
     borderRadius: 14,
     padding: 13,
     gap: 11,
     marginBottom: 30,
   },
 
+  coinBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(251, 191, 36, 0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   coinEmoji: {
-    fontSize: 25,
+    fontSize: 22,
   },
 
   coinInfo: {
@@ -275,23 +325,18 @@ const styles = StyleSheet.create({
   },
 
   coinLabel: {
-    color: "#94A3B8",
+    color: "#FDE68A",
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1,
+    opacity: 0.8,
   },
 
   coinAmount: {
-    color: "#FACC15",
+    color: "#FDE047",
     fontSize: 15,
     fontWeight: "900",
     marginTop: 4,
-  },
-
-  plus: {
-    color: "#FACC15",
-    fontSize: 24,
-    fontWeight: "700",
   },
 
   sectionLabel: {
@@ -320,19 +365,23 @@ const styles = StyleSheet.create({
   },
 
   menuItemActive: {
-    backgroundColor: "#123451",
-    borderColor: "#087FBF",
+    backgroundColor: "rgba(251, 191, 36, 0.10)",
+    borderColor: "rgba(251, 191, 36, 0.55)",
+  },
+
+  activeBar: {
+    position: "absolute",
+    left: 0,
+    top: 10,
+    bottom: 10,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: COLORS.gold,
   },
 
   menuIcon: {
     width: 25,
     textAlign: "center",
-    color: "#8EA3C0",
-    fontSize: 22,
-  },
-
-  menuIconActive: {
-    color: "#38BDF8",
   },
 
   menuLabel: {
@@ -344,6 +393,21 @@ const styles = StyleSheet.create({
 
   menuLabelActive: {
     color: "#FFFFFF",
+  },
+
+  soonBadge: {
+    borderWidth: 1,
+    borderColor: "#334762",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+
+  soonText: {
+    color: "#64748B",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.8,
   },
 
   logoutButton: {
@@ -375,12 +439,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  logoutIcon: {
-    color: "#F87171",
-    fontSize: 23,
-    fontWeight: "bold",
-  },
-
   logoutTitle: {
     color: "#FCA5A5",
     fontSize: 14,
@@ -393,13 +451,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  logoutArrow: {
-    color: "#F87171",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginRight: 5,
-  },
-
   bottom: {
     paddingHorizontal: 16,
     paddingBottom: 20,
@@ -409,9 +460,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#111B2D",
+    backgroundColor: "rgba(251, 191, 36, 0.08)",
     borderWidth: 1,
-    borderColor: "#293A53",
+    borderColor: "rgba(251, 191, 36, 0.28)",
     borderRadius: 14,
     padding: 12,
   },
@@ -428,7 +479,7 @@ const styles = StyleSheet.create({
   },
 
   statusTitle: {
-    color: "#E2E8F0",
+    color: "#FDE68A",
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.5,
@@ -438,10 +489,6 @@ const styles = StyleSheet.create({
     color: "#8194AF",
     fontSize: 10,
     marginTop: 4,
-  },
-
-  statusIcon: {
-    fontSize: 22,
   },
 
   version: {

@@ -1,13 +1,107 @@
-import { View, StyleSheet } from "react-native";
+import { useRef, useEffect } from "react";
+import { View, Animated, StyleSheet } from "react-native";
+
+// Each bubble: layout + color + how far / how fast it drifts
+const BUBBLES = [
+  {
+    top: 100,
+    left: -100,
+    size: 220,
+    color: "#FBBF24",
+    opacity: 0.1,
+    drift: 14,
+    duration: 5200,
+  },
+  {
+    top: 350,
+    right: -75,
+    size: 170,
+    color: "#F59E0B",
+    opacity: 0.1,
+    drift: 18,
+    duration: 6400,
+  },
+  {
+    top: 650,
+    left: -130,
+    size: 260,
+    color: "#7C3AED",
+    opacity: 0.14,
+    drift: 16,
+    duration: 7000,
+  },
+  {
+    top: 600,
+    right: -31,
+    size: 150,
+    color: "#FBBF24",
+    opacity: 0.09,
+    drift: 12,
+    duration: 5800,
+  },
+  {
+    top: 1150,
+    right: -100,
+    size: 200,
+    color: "#7C3AED",
+    opacity: 0.13,
+    drift: 20,
+    duration: 6800,
+  },
+];
+
+function Bubble({ config }) {
+  const float = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, {
+          toValue: 1,
+          duration: config.duration,
+          useNativeDriver: true,
+        }),
+        Animated.timing(float, {
+          toValue: 0,
+          duration: config.duration,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [float, config.duration]);
+
+  const translateY = float.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -config.drift],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.bubble,
+        {
+          width: config.size,
+          height: config.size,
+          top: config.top,
+          left: config.left,
+          right: config.right,
+          backgroundColor: config.color,
+          opacity: config.opacity,
+          transform: [{ translateY }],
+        },
+      ]}
+    />
+  );
+}
 
 export default function Bubbels() {
   return (
     <View pointerEvents="none" style={styles.bubbleContainer}>
-      <View style={[styles.bubble, styles.bubbleOne]} />
-      <View style={[styles.bubble, styles.bubbleTwo]} />
-      <View style={[styles.bubble, styles.bubbleThree]} />
-      <View style={[styles.bubble, styles.bubbleFour]} />
-      <View style={[styles.bubble, styles.bubbleFive]} />
+      {BUBBLES.map((b, i) => (
+        <Bubble key={i} config={b} />
+      ))}
     </View>
   );
 }
@@ -21,50 +115,5 @@ const styles = StyleSheet.create({
   bubble: {
     position: "absolute",
     borderRadius: 200,
-    backgroundColor: "#00D9FF",
-    opacity: 0.13,
-  },
-
-  bubbleOne: {
-    width: 220,
-    height: 220,
-    top: 100,
-    left: -100,
-  },
-
-  bubbleTwo: {
-    width: 170,
-    height: 170,
-    top: 350,
-    right: -75,
-    backgroundColor: "#00A8CC",
-    opacity: 0.12,
-  },
-
-  bubbleThree: {
-    width: 260,
-    height: 260,
-    top: 650,
-    left: -130,
-    backgroundColor: "#245B8A",
-    opacity: 0.16,
-  },
-
-  bubbleFour: {
-    width: 150,
-    height: 150,
-    top: 600,
-    right: -31,
-    backgroundColor: "#00D9FF",
-    opacity: 0.12,
-  },
-
-  bubbleFive: {
-    width: 200,
-    height: 200,
-    top: 1150,
-    right: -100,
-    backgroundColor: "#245B8A",
-    opacity: 0.15,
   },
 });

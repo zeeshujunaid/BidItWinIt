@@ -1,7 +1,15 @@
 import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import PicChanger from "./PicChanger";
 import { useAuth } from "../context/Authcontext";
 import { useNavigation } from "expo-router";
+
+const COLORS = {
+  bg: "#0B1020",
+  gold: "#FBBF24",
+  goldDark: "#F59E0B",
+  border: "#263752",
+};
 
 export default function Header() {
   const { user, loading, logout } = useAuth();
@@ -13,7 +21,7 @@ export default function Header() {
   };
 
   if (loading) {
-    return <View style={{ height: 240, backgroundColor: "#0B1020" }} />;
+    return <View style={{ height: 240, backgroundColor: COLORS.bg }} />;
   }
 
   return (
@@ -40,14 +48,14 @@ export default function Header() {
         />
 
         <View style={styles.playerInfo}>
-          <Text style={styles.welcomeText}>WELCOME BACK</Text>
+          <Text style={styles.welcomeText}>WELCOME BACK, BIDDER</Text>
 
           <Text style={styles.playerName} numberOfLines={1}>
             {user?.name || "Player"}
           </Text>
 
           <View style={styles.uidBadge}>
-            <Text style={styles.uidLabel}>ID</Text>
+            <Ionicons name="finger-print" size={12} color={COLORS.gold} />
             <Text style={styles.uidText}>#{user?.playerId ?? "------"}</Text>
           </View>
         </View>
@@ -84,23 +92,23 @@ const styles = StyleSheet.create({
   header: {
     height: 240,
     width: "100%",
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     flexDirection: "row",
     position: "relative",
     overflow: "hidden",
     borderBottomWidth: 1,
-    borderBottomColor: "#263752",
+    borderBottomColor: COLORS.border,
   },
 
   glow: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#164EAD",
-    opacity: 0.17,
-    top: -120,
-    left: 30,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: COLORS.goldDark,
+    opacity: 0.16,
+    top: -130,
+    left: 20,
   },
 
   bottomGlow: {
@@ -126,9 +134,9 @@ const styles = StyleSheet.create({
     width: 35,
     height: 30,
     borderRadius: 9,
-    backgroundColor: "rgba(56, 189, 248, 0.12)",
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.4)",
+    borderColor: "rgba(251, 191, 36, 0.45)",
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
@@ -139,7 +147,7 @@ const styles = StyleSheet.create({
     width: 17,
     height: 2,
     borderRadius: 2,
-    backgroundColor: "#38BDF8",
+    backgroundColor: COLORS.gold,
   },
 
   logo: {
@@ -155,8 +163,8 @@ const styles = StyleSheet.create({
   },
 
   welcomeText: {
-    color: "#38BDF8",
-    fontSize: 10,
+    color: COLORS.gold,
+    fontSize: 9,
     fontWeight: "900",
     letterSpacing: 1.2,
     marginBottom: 6,
@@ -176,22 +184,16 @@ const styles = StyleSheet.create({
     marginTop: 9,
     width: 110,
     backgroundColor: "#17243A",
-    borderWidth: 2,
-    borderColor: "#2B4162",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.35)",
     borderRadius: 7,
     paddingHorizontal: 8,
     paddingVertical: 5,
     gap: 6,
   },
 
-  uidLabel: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
   uidText: {
-    color: "#CBD5E1",
+    color: "#FDE68A",
     fontSize: 10,
     fontWeight: "700",
   },
@@ -213,8 +215,8 @@ const styles = StyleSheet.create({
     width: 115,
     height: 125,
     borderRadius: 60,
-    backgroundColor: "#1D8FE1",
-    opacity: 0.18,
+    backgroundColor: COLORS.goldDark,
+    opacity: 0.2,
     bottom: 18,
   },
 
@@ -235,9 +237,9 @@ const styles = StyleSheet.create({
   coinCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#17243A",
-    borderWidth: 1,
-    borderColor: "#344967",
+    backgroundColor: "#1B1A14",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
     borderRadius: 12,
     paddingVertical: 7,
     paddingHorizontal: 8,
@@ -248,7 +250,7 @@ const styles = StyleSheet.create({
     width: 27,
     height: 27,
     borderRadius: 9,
-    backgroundColor: "#29364A",
+    backgroundColor: "rgba(251, 191, 36, 0.16)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -262,14 +264,15 @@ const styles = StyleSheet.create({
   },
 
   coinLabel: {
-    color: "#94A3B8",
+    color: "#FDE68A",
     fontSize: 7,
     fontWeight: "800",
     letterSpacing: 0.5,
+    opacity: 0.8,
   },
 
   coinAmount: {
-    color: "#FACC15",
+    color: "#FDE047",
     fontSize: 14,
     fontWeight: "900",
     marginTop: 2,
@@ -281,7 +284,7 @@ const styles = StyleSheet.create({
     left: "15%",
     width: "70%",
     height: 1,
-    backgroundColor: "#38BDF8",
-    opacity: 0.25,
+    backgroundColor: COLORS.gold,
+    opacity: 0.4,
   },
 });

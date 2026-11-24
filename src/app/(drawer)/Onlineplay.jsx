@@ -7,6 +7,9 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/Authcontext";
@@ -18,6 +21,16 @@ import Loader from "../components/Loader";
 import { joinRoom } from "../Rooms/joinRoom";
 import { ROOM_NAMES } from "../Rooms/constants";
 import { cleanupStaleRoom, isRoomStale } from "../Rooms/cleanupRoom";
+
+const COLORS = {
+  bg: "#0B1020",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  card: "#131D31",
+  line: "#273247",
+  muted: "#94A3B8",
+};
 
 export default function OnlinePlay() {
   const router = useRouter();
@@ -95,6 +108,15 @@ export default function OnlinePlay() {
     }
   };
 
+  const onJoinPress = (roomId) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (e) {
+      // haptics not available, ignore
+    }
+    handleJoinRoom(roomId);
+  };
+
   if (loading || authLoading) {
     return <Loader />;
   }
@@ -109,9 +131,11 @@ export default function OnlinePlay() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerSection}>
-          <Text style={styles.heading}>Online Play</Text>
+          <Text style={styles.heading}>
+            Online <Text style={styles.headingGold}>Play</Text>
+          </Text>
           <Text style={styles.subtitle}>
-            Find a room, join the action, and compete with players.
+            Pick a room, outbid the rest and keep the profit.
           </Text>
         </View>
 
@@ -142,7 +166,10 @@ export default function OnlinePlay() {
                     : "Unavailable";
 
           return (
-            <View key={roomId} style={styles.roomCard}>
+            <View
+              key={roomId}
+              style={[styles.roomCard, isWaiting && styles.roomCardOpen]}
+            >
               <View style={styles.cardTop}>
                 <View style={styles.roomInfo}>
                   <View style={styles.roomIcon}>
@@ -188,7 +215,7 @@ export default function OnlinePlay() {
                     {playerCount}
                     <Text style={styles.playerTotal}> / {maxPlayers}</Text>
                   </Text>
-                  <Text style={styles.playerLabel}>Players joined</Text>
+                  <Text style={styles.playerLabel}>Bidders joined</Text>
                 </View>
 
                 <View style={styles.playerSlots}>
@@ -205,19 +232,37 @@ export default function OnlinePlay() {
 
                 <TouchableOpacity
                   style={[
-                    styles.joinButton,
+                    styles.joinButtonWrap,
                     !isWaiting && styles.disabledButton,
                   ]}
                   disabled={!isWaiting || joiningRoom !== ""}
-                  onPress={() => handleJoinRoom(roomId)}
-                  activeOpacity={0.8}
+                  onPress={() => onJoinPress(roomId)}
+                  activeOpacity={0.85}
                 >
-                  {isJoining ? (
-                    <ActivityIndicator color="#07111F" />
+                  {isWaiting ? (
+                    <LinearGradient
+                      colors={[COLORS.goldLight, COLORS.goldDark]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.joinButton}
+                    >
+                      {isJoining ? (
+                        <ActivityIndicator color="#1A1200" />
+                      ) : (
+                        <View style={styles.joinContent}>
+                          <Ionicons name="hammer" size={15} color="#1A1200" />
+                          <Text style={styles.joinButtonText}>JOIN</Text>
+                        </View>
+                      )}
+                    </LinearGradient>
                   ) : (
-                    <Text style={styles.joinButtonText}>
-                      {isWaiting ? "JOIN" : "—"}
-                    </Text>
+                    <View style={styles.joinButton}>
+                      {isJoining ? (
+                        <ActivityIndicator color="#1A1200" />
+                      ) : (
+                        <Text style={styles.disabledText}>—</Text>
+                      )}
+                    </View>
                   )}
                 </TouchableOpacity>
               </View>
@@ -232,7 +277,7 @@ export default function OnlinePlay() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     overflow: "hidden",
   },
 
@@ -253,12 +298,16 @@ const styles = StyleSheet.create({
   heading: {
     color: "#FFFFFF",
     fontSize: 29,
-    fontWeight: "800",
+    fontWeight: "900",
     letterSpacing: 0.3,
   },
 
+  headingGold: {
+    color: COLORS.gold,
+  },
+
   subtitle: {
-    color: "#91A4BA",
+    color: COLORS.muted,
     fontSize: 13,
     lineHeight: 20,
     marginTop: 7,
@@ -274,23 +323,27 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: "#FFFFFF",
     fontSize: 17,
-    fontWeight: "700",
+    fontWeight: "800",
   },
 
   roomCount: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1,
   },
 
   roomCard: {
-    backgroundColor: "#102137",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#1C3852",
+    borderColor: "#293A56",
     borderRadius: 17,
     padding: 16,
     marginBottom: 14,
+  },
+
+  roomCardOpen: {
+    borderColor: "rgba(251, 191, 36, 0.45)",
   },
 
   cardTop: {
@@ -309,15 +362,15 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 13,
-    backgroundColor: "#173B55",
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
     borderWidth: 1,
-    borderColor: "#24536D",
+    borderColor: "rgba(251, 191, 36, 0.45)",
     justifyContent: "center",
     alignItems: "center",
   },
 
   roomNumber: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 15,
     fontWeight: "900",
   },
@@ -383,7 +436,7 @@ const styles = StyleSheet.create({
 
   cardDivider: {
     height: 1,
-    backgroundColor: "#20364B",
+    backgroundColor: COLORS.line,
     marginVertical: 15,
   },
 
@@ -427,27 +480,43 @@ const styles = StyleSheet.create({
   },
 
   filledSlot: {
-    backgroundColor: "#00D9FF",
+    backgroundColor: COLORS.gold,
+  },
+
+  joinButtonWrap: {
+    borderRadius: 10,
+    overflow: "hidden",
+    minWidth: 84,
   },
 
   joinButton: {
-    backgroundColor: "#00D9FF",
-    paddingHorizontal: 19,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 10,
-    minWidth: 78,
+    minWidth: 84,
     alignItems: "center",
     justifyContent: "center",
   },
 
+  joinContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
   joinButtonText: {
-    color: "#07111F",
+    color: "#1A1200",
     fontSize: 12,
     fontWeight: "900",
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
   },
 
   disabledButton: {
     backgroundColor: "#26394D",
+  },
+
+  disabledText: {
+    color: "#8297AE",
+    fontSize: 12,
+    fontWeight: "900",
   },
 });
