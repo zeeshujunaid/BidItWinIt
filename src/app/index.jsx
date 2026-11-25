@@ -5,17 +5,79 @@ import {
   StatusBar,
   Image,
   StyleSheet,
+  Animated,
 } from "react-native";
 import Bubbels from "./components/Bubbels";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ref, get, update } from "firebase/database";
 import { useAuth } from "../app/context/Authcontext";
 import { db } from "../app/utils/Firebase";
 
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  gold: "#FBBF24",
+  goldDark: "#F59E0B",
+  border: "#293A56",
+  muted: "#94A3B8",
+};
+
 export default function Index() {
   const router = useRouter();
   const { user, loading } = useAuth();
+
+  // UI-only animations
+  const pulse = useRef(new Animated.Value(0.1)).current;
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const footerBlink = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.28,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.1,
+          duration: 2200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    const blinkLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(footerBlink, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(footerBlink, {
+          toValue: 0.45,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    Animated.timing(fadeIn, {
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
+    }).start();
+
+    glowLoop.start();
+    blinkLoop.start();
+
+    return () => {
+      glowLoop.stop();
+      blinkLoop.stop();
+    };
+  }, [pulse, fadeIn, footerBlink]);
 
   useEffect(() => {
     if (loading) return;
@@ -91,11 +153,13 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="hidden" />
+      <StatusBar hidden />
 
       <Bubbels />
+      <Animated.View style={[styles.glowTop, { opacity: pulse }]} />
+      <View style={styles.glowBottom} />
 
-      <View style={styles.content}>
+      <Animated.View style={[styles.content, { opacity: fadeIn }]}>
         <Image
           source={require("../../assets/images/textlogo.png")}
           style={styles.logo}
@@ -118,16 +182,29 @@ export default function Index() {
 
         <View style={styles.steps}>
           <View style={styles.step}>
+            <View style={styles.stepIcon}>
+              <Ionicons name="enter" size={18} color={COLORS.gold} />
+            </View>
             <Text style={styles.stepNumber}>01</Text>
             <Text style={styles.stepText}>Join a Room</Text>
           </View>
 
+          <View style={styles.stepDivider} />
+
           <View style={styles.step}>
+            <View style={styles.stepIcon}>
+              <Ionicons name="hammer" size={18} color={COLORS.gold} />
+            </View>
             <Text style={styles.stepNumber}>02</Text>
             <Text style={styles.stepText}>Place Your Bid</Text>
           </View>
 
+          <View style={styles.stepDivider} />
+
           <View style={styles.step}>
+            <View style={styles.stepIcon}>
+              <Ionicons name="trophy" size={18} color={COLORS.gold} />
+            </View>
             <Text style={styles.stepNumber}>03</Text>
             <Text style={styles.stepText}>Win Items</Text>
           </View>
@@ -135,12 +212,14 @@ export default function Index() {
 
         <ActivityIndicator
           size="large"
-          color="#ffcd08"
+          color={COLORS.gold}
           style={styles.spinner}
         />
 
-        <Text style={styles.footer}>LET THE BIDDING BEGIN!</Text>
-      </View>
+        <Animated.Text style={[styles.footer, { opacity: footerBlink }]}>
+          LET THE BIDDING BEGIN!
+        </Animated.Text>
+      </Animated.View>
     </View>
   );
 }
@@ -148,10 +227,32 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: COLORS.bg,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 25,
+    overflow: "hidden",
+  },
+
+  glowTop: {
+    position: "absolute",
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: COLORS.goldDark,
+    top: -160,
+    right: -120,
+  },
+
+  glowBottom: {
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "#7C3AED",
+    opacity: 0.12,
+    bottom: -120,
+    left: -120,
   },
 
   content: {
@@ -167,7 +268,7 @@ const styles = StyleSheet.create({
   },
 
   tagline: {
-    color: "#ffcd08",
+    color: COLORS.gold,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 3,
@@ -177,7 +278,7 @@ const styles = StyleSheet.create({
   divider: {
     width: 45,
     height: 3,
-    backgroundColor: "#ffcd08",
+    backgroundColor: COLORS.gold,
     borderRadius: 5,
     marginTop: 30,
     marginBottom: 25,
@@ -192,11 +293,11 @@ const styles = StyleSheet.create({
   },
 
   highlight: {
-    color: "#ffcd08",
+    color: COLORS.gold,
   },
 
   description: {
-    color: "#9CA8BD",
+    color: COLORS.muted,
     fontSize: 14,
     lineHeight: 23,
     textAlign: "center",
@@ -206,15 +307,16 @@ const styles = StyleSheet.create({
 
   steps: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     width: "100%",
     marginTop: 40,
     paddingVertical: 20,
     paddingHorizontal: 10,
-    backgroundColor: "#151E32",
+    backgroundColor: COLORS.card,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#26334A",
+    borderColor: "rgba(251, 191, 36, 0.35)",
   },
 
   step: {
@@ -222,9 +324,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  stepIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+
+  stepDivider: {
+    width: 1,
+    height: 52,
+    backgroundColor: "#273247",
+  },
+
   stepNumber: {
-    color: "#ffcd08",
-    fontSize: 21,
+    color: COLORS.gold,
+    fontSize: 19,
     fontWeight: "900",
   },
 
@@ -232,7 +352,7 @@ const styles = StyleSheet.create({
     color: "#C5CDDA",
     fontSize: 10,
     fontWeight: "600",
-    marginTop: 8,
+    marginTop: 6,
     textAlign: "center",
   },
 
@@ -241,7 +361,7 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    color: "#66758F",
+    color: COLORS.gold,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 2,

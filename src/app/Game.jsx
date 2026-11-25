@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { onValue, ref } from "firebase/database";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Image,
   ImageBackground,
   StyleSheet,
@@ -9,6 +10,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import Toast from "react-native-toast-message";
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
@@ -30,6 +34,19 @@ import { useSaveCoins } from "./Hooks/useSaveCoins";
 import { serverNow } from "./Hooks/serverTime";
 import { useBlockBack } from "./Hooks/useBlockBack";
 
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  goldDark: "#F59E0B",
+  border: "#293A56",
+  muted: "#94A3B8",
+  green: "#46E6A5",
+  red: "#F0445E",
+  dark: "#1A1200",
+};
+
 export default function Game() {
   const { roomId } = useLocalSearchParams();
   const router = useRouter();
@@ -41,6 +58,11 @@ export default function Game() {
   const [currentTime, setCurrentTime] = useState(serverNow());
 
   const { user, loading: authLoading } = useAuth();
+
+  // UI-only animation values
+  const bidScale = useRef(new Animated.Value(1)).current;
+  const timerScale = useRef(new Animated.Value(1)).current;
+  const prevBid = useRef(0);
 
   useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   useSaveCoins(room, user);
@@ -59,7 +81,6 @@ export default function Game() {
     const roomRef = ref(db, `Rooms/${roomId}`);
 
     const unsubscribe = onValue(
-      
       roomRef,
       (snapshot) => {
         if (!snapshot.exists()) {
@@ -111,6 +132,58 @@ export default function Game() {
     auctionStage = "GOING THRICE";
   }
 
+  // UI-only: last seconds of the auction
+  const isUrgent =
+    room?.auctionStatus === "bidding" &&
+    !!room?.auctionEndsAt &&
+    remainingSeconds <= 5 &&
+    remainingSeconds > 0;
+
+  // UI-only: pop the price when a new bid comes in
+  useEffect(() => {
+    if (prevBid.current === currentBid) return;
+    prevBid.current = currentBid;
+
+    Animated.sequence([
+      Animated.timing(bidScale, {
+        toValue: 1.18,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(bidScale, {
+        toValue: 1,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [currentBid]);
+
+  // UI-only: pulse the timer in the last 5 seconds
+  useEffect(() => {
+    if (!isUrgent) {
+      timerScale.setValue(1);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(timerScale, {
+          toValue: 1.15,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(timerScale, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+
+    return () => loop.stop();
+  }, [isUrgent]);
+
   // Reset image error when item changes
   useEffect(() => {
     setImageError(false);
@@ -160,6 +233,15 @@ export default function Game() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const onBidPress = (amount) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (e) {
+      // haptics not available, ignore
+    }
+    handleBid(amount);
   };
 
   // Auction settlement when timer ends
@@ -239,6 +321,9 @@ export default function Game() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
+
       {/* HEADER */}
       <View style={styles.header}>
         <View
@@ -255,8 +340,13 @@ export default function Game() {
           <View
             style={{ flexDirection: "column", alignItems: "center", gap: 6 }}
           >
-            <Text style={styles.title}>BID IT WIN IT</Text>
-            <Text style={styles.room}>ROOM: {roomId}</Text>
+            <Text style={styles.title}>
+              BID IT <Text style={styles.titleGold}>WIN IT</Text>
+            </Text>
+            <View style={styles.roomChip}>
+              <Ionicons name="key" size={9} color={COLORS.gold} />
+              <Text style={styles.room}>{roomId}</Text>
+            </View>
           </View>
         </View>
 
@@ -283,6 +373,7 @@ export default function Game() {
             />
           ) : (
             <View style={styles.imagePlaceholder}>
+              <Ionicons name="cube-outline" size={28} color={COLORS.muted} />
               <Text style={styles.text}>No Image</Text>
             </View>
           )}
@@ -308,7 +399,11 @@ export default function Game() {
         <View style={styles.bidBox}>
           <Text style={styles.bidLabel}>HIGHEST BID</Text>
 
-          <Text style={styles.bidPrice}>${currentBid.toLocaleString()}</Text>
+          <Animated.Text
+            style={[styles.bidPrice, { transform: [{ scale: bidScale }] }]}
+          >
+            ${currentBid.toLocaleString()}
+          </Animated.Text>
 
           <Text style={styles.bidder} numberOfLines={1}>
             {players.find((p) => p.uid === room.currentHighBidder)?.name ||
@@ -317,12 +412,22 @@ export default function Game() {
         </View>
 
         {room.auctionStatus === "bidding" && (
-          <View style={styles.timerBox}>
-            <Text style={styles.timerStage}>
+          <View style={[styles.timerBox, isUrgent && styles.timerBoxUrgent]}>
+            <Text
+              style={[styles.timerStage, isUrgent && styles.timerStageUrgent]}
+            >
               {!room.auctionEndsAt ? "GET READY" : auctionStage}
             </Text>
 
-            <Text style={styles.timer}>{remainingSeconds}s</Text>
+            <Animated.Text
+              style={[
+                styles.timer,
+                isUrgent && styles.timerUrgent,
+                { transform: [{ scale: timerScale }] },
+              ]}
+            >
+              {remainingSeconds}s
+            </Animated.Text>
           </View>
         )}
       </View>
@@ -360,13 +465,22 @@ export default function Game() {
                   <Image source={{ uri: avatar }} style={styles.profileImage} />
                 ) : (
                   <View style={styles.emptyAvatar}>
-                    <Text style={styles.plus}>+</Text>
+                    <Ionicons
+                      name="add"
+                      size={20}
+                      color="rgba(251, 191, 36, 0.7)"
+                    />
                   </View>
                 )}
               </View>
 
               {player && (
-                <View style={styles.nameTag}>
+                <View
+                  style={[
+                    styles.nameTag,
+                    isHighestBidder && styles.nameTagLeading,
+                  ]}
+                >
                   <Text style={styles.characterName} numberOfLines={1}>
                     {player.name || "Player"}
                   </Text>
@@ -374,7 +488,7 @@ export default function Game() {
               )}
 
               {isHighestBidder && room.auctionStatus === "bidding" && (
-                <Text style={styles.highestBadge}>LEADING</Text>
+                <Text style={styles.highestBadge}>👑 LEADING</Text>
               )}
             </View>
           );
@@ -391,17 +505,24 @@ export default function Game() {
               <TouchableOpacity
                 key={amount}
                 style={[
-                  styles.bidButton,
+                  styles.bidButtonWrap,
                   (actionLoading || !room.auctionEndsAt) &&
                     styles.disabledButton,
                 ]}
-                onPress={() => handleBid(amount)}
+                onPress={() => onBidPress(amount)}
                 disabled={actionLoading || !room.auctionEndsAt}
-                activeOpacity={0.75}
+                activeOpacity={0.8}
               >
-                <Text style={styles.buttonText}>
-                  +${amount.toLocaleString()}
-                </Text>
+                <LinearGradient
+                  colors={[COLORS.goldLight, COLORS.goldDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.bidButton}
+                >
+                  <Text style={styles.buttonText}>
+                    +${amount.toLocaleString()}
+                  </Text>
+                </LinearGradient>
               </TouchableOpacity>
             ))}
           </View>
@@ -413,7 +534,7 @@ export default function Game() {
       {/* RESULT MODAL */}
       {room.auctionStatus === "finished" && (
         <View style={styles.resultOverlay}>
-          <View style={styles.resultBox}>
+          <View style={[styles.resultBox, !winner && styles.resultBoxUnsold]}>
             {winner ? (
               <>
                 <Text style={styles.resultEmoji}>🏆</Text>
@@ -454,7 +575,7 @@ export default function Game() {
 
                   <View style={styles.resultRow}>
                     <Text style={styles.resultLabel}>New Balance</Text>
-                    <Text style={styles.resultValue}>
+                    <Text style={styles.resultBalance}>
                       ${Number(winner.coins || 0).toLocaleString()}
                     </Text>
                   </View>
@@ -479,11 +600,34 @@ export default function Game() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#07111F",
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 15,
     paddingTop: 42,
     paddingBottom: 12,
     justifyContent: "space-between",
+    overflow: "hidden",
+  },
+
+  glowTop: {
+    position: "absolute",
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: COLORS.goldDark,
+    opacity: 0.12,
+    top: -150,
+    right: -110,
+  },
+
+  glowBottom: {
+    position: "absolute",
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "#7C3AED",
+    opacity: 0.1,
+    bottom: -120,
+    left: -100,
   },
 
   header: {
@@ -499,31 +643,48 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
 
+  titleGold: {
+    color: COLORS.gold,
+  },
+
+  roomChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.4)",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+
   room: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 10,
-    fontWeight: "bold",
-    marginTop: 4,
+    fontWeight: "900",
+    letterSpacing: 1.5,
   },
 
   coinsBox: {
-    backgroundColor: "#123B35",
-    borderWidth: 1,
-    borderColor: "#46E6A5",
-    borderRadius: 8,
+    backgroundColor: "#1B1A14",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
+    borderRadius: 10,
     paddingHorizontal: 11,
     paddingVertical: 7,
     alignItems: "center",
   },
 
   coinsLabel: {
-    color: "#A8B7CA",
+    color: "#FDE68A",
     fontSize: 8,
     fontWeight: "bold",
+    opacity: 0.8,
   },
 
   coins: {
-    color: "#46E6A5",
+    color: COLORS.goldLight,
     fontSize: 14,
     fontWeight: "900",
     marginTop: 3,
@@ -533,10 +694,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     width: "100%",
     height: 115,
-    backgroundColor: "#0D1B2D",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#24415B",
-    borderRadius: 10,
+    borderColor: "rgba(251, 191, 36, 0.3)",
+    borderRadius: 12,
     padding: 9,
     alignItems: "center",
   },
@@ -544,8 +705,8 @@ const styles = StyleSheet.create({
   itemImageBox: {
     width: "36%",
     height: "100%",
-    backgroundColor: "#122238",
-    borderRadius: 7,
+    backgroundColor: "#0B1020",
+    borderRadius: 8,
     padding: 5,
     alignItems: "center",
     justifyContent: "center",
@@ -560,6 +721,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    gap: 4,
   },
 
   itemDetails: {
@@ -569,9 +731,10 @@ const styles = StyleSheet.create({
   },
 
   itemNumber: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 9,
-    fontWeight: "bold",
+    fontWeight: "900",
+    letterSpacing: 1,
     marginBottom: 5,
   },
 
@@ -582,7 +745,7 @@ const styles = StyleSheet.create({
   },
 
   description: {
-    color: "#A8B7CA",
+    color: COLORS.muted,
     fontSize: 10,
     marginTop: 5,
     lineHeight: 14,
@@ -597,24 +760,26 @@ const styles = StyleSheet.create({
 
   bidBox: {
     flex: 1,
-    backgroundColor: "#0D1B2D",
-    borderWidth: 1,
-    borderColor: "#38BDF8",
-    borderRadius: 9,
+    backgroundColor: "#1B1A14",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     padding: 5,
   },
 
   bidLabel: {
-    color: "#A8B7CA",
+    color: "#FDE68A",
     fontSize: 9,
-    fontWeight: "bold",
+    fontWeight: "900",
+    letterSpacing: 1,
+    opacity: 0.8,
   },
 
   bidPrice: {
-    color: "#FACC15",
-    fontSize: 23,
+    color: COLORS.goldLight,
+    fontSize: 25,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -629,18 +794,28 @@ const styles = StyleSheet.create({
 
   timerBox: {
     width: "34%",
-    backgroundColor: "#102A40",
-    borderWidth: 1,
-    borderColor: "#FACC15",
-    borderRadius: 9,
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: "rgba(251, 191, 36, 0.55)",
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
 
+  timerBoxUrgent: {
+    borderColor: COLORS.red,
+    backgroundColor: "rgba(240, 68, 94, 0.12)",
+  },
+
   timerStage: {
-    color: "#FACC15",
+    color: COLORS.gold,
     fontSize: 10,
     fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  timerStageUrgent: {
+    color: "#FF8A9B",
   },
 
   timer: {
@@ -648,6 +823,10 @@ const styles = StyleSheet.create({
     fontSize: 27,
     fontWeight: "900",
     marginTop: 2,
+  },
+
+  timerUrgent: {
+    color: COLORS.red,
   },
 
   characterTable: {
@@ -674,18 +853,18 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 22,
     borderWidth: 2,
-    borderColor: "#64748B",
+    borderColor: "#475569",
     padding: 2,
-    backgroundColor: "#07111F",
+    backgroundColor: COLORS.bg,
     overflow: "hidden",
   },
 
   activeProfile: {
-    borderColor: "#38BDF8",
+    borderColor: "rgba(251, 191, 36, 0.5)",
   },
 
   highestBidderProfile: {
-    borderColor: "#FACC15",
+    borderColor: COLORS.goldLight,
     borderWidth: 3,
   },
 
@@ -703,18 +882,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  plus: {
-    color: "#FFFFFF",
-    fontSize: 20,
-  },
-
   nameTag: {
-    backgroundColor: "#07111F",
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 4,
     paddingVertical: 3,
     borderRadius: 4,
     marginTop: 3,
     maxWidth: 60,
+  },
+
+  nameTagLeading: {
+    borderWidth: 1,
+    borderColor: "rgba(253, 224, 71, 0.7)",
   },
 
   characterName: {
@@ -724,7 +903,7 @@ const styles = StyleSheet.create({
   },
 
   highestBadge: {
-    color: "#FACC15",
+    color: COLORS.goldLight,
     fontSize: 8,
     fontWeight: "900",
     marginTop: 3,
@@ -736,11 +915,11 @@ const styles = StyleSheet.create({
   },
 
   buttonHeading: {
-    color: "#FFFFFF",
+    color: COLORS.gold,
     fontSize: 14,
     fontWeight: "900",
     marginBottom: 10,
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
 
   buttons: {
@@ -751,13 +930,14 @@ const styles = StyleSheet.create({
     gap: 9,
   },
 
-  bidButton: {
+  bidButtonWrap: {
     width: "31.5%",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+
+  bidButton: {
     minHeight: 43,
-    backgroundColor: "#12304A",
-    borderWidth: 1,
-    borderColor: "#38BDF8",
-    borderRadius: 7,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -767,13 +947,13 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    color: "#FFFFFF",
+    color: COLORS.dark,
     fontWeight: "900",
     fontSize: 13,
   },
 
   bidHint: {
-    color: "#A8B7CA",
+    color: COLORS.muted,
     fontSize: 9,
     marginTop: 8,
   },
@@ -784,7 +964,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(0,0,0,0.78)",
+    backgroundColor: "rgba(0,0,0,0.82)",
     justifyContent: "center",
     alignItems: "center",
     padding: 22,
@@ -794,12 +974,16 @@ const styles = StyleSheet.create({
 
   resultBox: {
     width: "100%",
-    backgroundColor: "#102A40",
-    borderWidth: 1,
-    borderColor: "#46E6A5",
-    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
+    borderRadius: 18,
     padding: 20,
     alignItems: "center",
+  },
+
+  resultBoxUnsold: {
+    borderColor: "#475569",
   },
 
   resultEmoji: {
@@ -808,15 +992,17 @@ const styles = StyleSheet.create({
   },
 
   resultTitle: {
-    color: "#46E6A5",
+    color: COLORS.gold,
     fontSize: 24,
     fontWeight: "900",
+    letterSpacing: 1,
   },
 
   unsoldTitle: {
-    color: "#FACC15",
+    color: COLORS.muted,
     fontSize: 24,
     fontWeight: "900",
+    letterSpacing: 1,
   },
 
   resultSubtitle: {
@@ -828,8 +1014,10 @@ const styles = StyleSheet.create({
 
   resultDetails: {
     width: "100%",
-    backgroundColor: "#0D1B2D",
-    borderRadius: 9,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: "#273247",
+    borderRadius: 10,
     padding: 12,
     marginTop: 18,
     gap: 12,
@@ -842,7 +1030,7 @@ const styles = StyleSheet.create({
   },
 
   resultLabel: {
-    color: "#A8B7CA",
+    color: COLORS.muted,
     fontSize: 12,
   },
 
@@ -852,18 +1040,24 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  profitText: {
-    color: "#46E6A5",
+  resultBalance: {
+    color: COLORS.goldLight,
     fontSize: 14,
     fontWeight: "900",
   },
 
+  profitText: {
+    color: COLORS.green,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
   lossText: {
-    color: "#F0445E",
+    color: COLORS.red,
   },
 
   nextItemText: {
-    color: "#38BDF8",
+    color: COLORS.gold,
     fontSize: 11,
     fontWeight: "bold",
     marginTop: 18,
@@ -872,5 +1066,6 @@ const styles = StyleSheet.create({
   text: {
     color: "#FFFFFF",
     textAlign: "center",
+    fontSize: 10,
   },
 });
