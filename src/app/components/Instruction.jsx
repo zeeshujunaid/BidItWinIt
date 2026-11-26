@@ -1,10 +1,22 @@
 import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+const COLORS = {
+  bg: "#0B1020",
+  card: "#131D31",
+  gold: "#FBBF24",
+  goldLight: "#FDE047",
+  muted: "#94A3B8",
+};
 
 export default function Instruction() {
   return (
     <View style={styles.instructionBox}>
       <View style={styles.instructionHeader}>
-        <Text style={styles.instructionTitle}>🎮 HOW TO PLAY</Text>
+        <View style={styles.titleRow}>
+          <Ionicons name="game-controller" size={18} color={COLORS.gold} />
+          <Text style={styles.instructionTitle}>HOW TO PLAY</Text>
+        </View>
         <Text style={styles.instructionTag}>GAME GUIDE</Text>
       </View>
 
@@ -81,16 +93,19 @@ export default function Instruction() {
         </View>
       </ScrollView>
 
-      <Text style={styles.scrollHint}>SWIPE TO READ MORE ↓</Text>
+      <View style={styles.hintRow}>
+        <Text style={styles.scrollHint}>SWIPE TO READ MORE</Text>
+        <Ionicons name="chevron-down" size={12} color={COLORS.gold} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   instructionBox: {
-    backgroundColor: "#102338",
+    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "#24536D",
+    borderColor: "rgba(251, 191, 36, 0.35)",
     borderRadius: 18,
     padding: 15,
     marginTop: 22,
@@ -105,6 +120,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
   instructionTitle: {
     color: "#FFFFFF",
     fontSize: 15,
@@ -113,13 +134,17 @@ const styles = StyleSheet.create({
   },
 
   instructionTag: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 9,
     fontWeight: "900",
-    backgroundColor: "#163B50",
+    letterSpacing: 0.8,
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.4)",
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 8,
+    overflow: "hidden",
   },
 
   instructionScroll: {
@@ -133,10 +158,12 @@ const styles = StyleSheet.create({
   },
 
   instructionNumber: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 14,
     fontWeight: "900",
-    backgroundColor: "#173B50",
+    backgroundColor: "rgba(251, 191, 36, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251, 191, 36, 0.35)",
     padding: 9,
     borderRadius: 9,
     overflow: "hidden",
@@ -155,17 +182,23 @@ const styles = StyleSheet.create({
   },
 
   instructionText: {
-    color: "#A8B7CA",
+    color: COLORS.muted,
     fontSize: 11,
     lineHeight: 17,
   },
 
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    marginTop: 8,
+  },
+
   scrollHint: {
-    color: "#00D9FF",
+    color: COLORS.gold,
     fontSize: 9,
     fontWeight: "800",
-    textAlign: "center",
     letterSpacing: 1,
-    marginTop: 8,
   },
 });
