@@ -118,6 +118,7 @@ export default function Playwithfriends() {
                   name: user.name || "Player",
                   playerId: user.playerId || "",
                   coins: balance,
+                  profilePic: user.profilePic || "",
                   isConnected: true,
                   seatIndex: 0,
                 },

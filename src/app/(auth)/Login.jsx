@@ -55,7 +55,6 @@ export default function Login() {
   const pulse = useRef(new Animated.Value(0.1)).current;
   const activityFade = useRef(new Animated.Value(1)).current;
 
-  // Pulsing gold spotlight
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -75,7 +74,6 @@ export default function Login() {
     return () => loop.stop();
   }, [pulse]);
 
-  // Rotating live activity messages
   useEffect(() => {
     const interval = setInterval(() => {
       Animated.timing(activityFade, {
@@ -149,7 +147,6 @@ export default function Login() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     } catch (e) {
-      // haptics not available, ignore
     }
     handleLogin();
   };

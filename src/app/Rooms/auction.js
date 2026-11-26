@@ -1,12 +1,13 @@
 import { ref, runTransaction } from "firebase/database";
 import { db } from "../utils/Firebase";
 import { ROOM_STATUS, AUCTION_DURATION_MS, parseMoney } from "./constants";
-import { serverNow } from "../Hooks/serverTime";
+import { serverNow, waitForServerTime } from "../Hooks/serverTime";
 
 const roomRef = (roomId) => ref(db, `Rooms/${roomId}`);
 
 // 1) Naye item ka timer start karo (koi bhi client pehle kare)
 export async function initAuctionTimer(roomId) {
+   await waitForServerTime();
   await runTransaction(roomRef(roomId), (room) => {
     if (!room) return room;
     if (room.status !== ROOM_STATUS.PLAYING) return;
@@ -26,6 +27,12 @@ export async function initAuctionTimer(roomId) {
 // Returns { ok: true, newBid } or { ok: false, reason }
 // reasons: "failed" | "already_leading"
 export async function placeBid(roomId, uid, amount) {
+  await waitForServerTime();
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, reason: "failed" };
+  }
+
   let reason = "failed";
 
   const result = await runTransaction(roomRef(roomId), (room) => {
@@ -82,6 +89,7 @@ export async function placeBid(roomId, uid, amount) {
 
 // 3) Timer khatam: item sold ya unsold
 export async function settleAuction(roomId) {
+   await waitForServerTime();
   await runTransaction(roomRef(roomId), (room) => {
     if (!room) return room;
     if (room.status !== ROOM_STATUS.PLAYING) return;

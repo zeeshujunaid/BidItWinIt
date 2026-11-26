@@ -136,10 +136,8 @@ export default function Signup() {
     const formData = new FormData();
 
     if (imageUri.startsWith("http")) {
-      // Predefined avatar URL
       formData.append("file", imageUri);
     } else {
-      // Custom gallery image
       const file = new File(imageUri);
       formData.append("file", file);
     }
@@ -165,7 +163,6 @@ export default function Signup() {
   };
 
   const HandleSignup = async () => {
-    // 1. Name validation
     if (!name.trim()) {
       Toast.show({
         type: "error",
@@ -174,7 +171,6 @@ export default function Signup() {
       return;
     }
 
-    // 2. Email validation
     if (!email.trim()) {
       Toast.show({
         type: "error",
@@ -183,7 +179,6 @@ export default function Signup() {
       return;
     }
 
-    // Valid email format: example@gmail.com, example@yahoo.com
     const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
 
     if (!emailRegex.test(email.trim())) {
@@ -195,7 +190,6 @@ export default function Signup() {
       return;
     }
 
-    // 3. Password validation
     if (!password.trim()) {
       Toast.show({
         type: "error",
@@ -212,7 +206,6 @@ export default function Signup() {
       return;
     }
 
-    // 4. Confirm password validation
     if (!confirmPassword.trim()) {
       Toast.show({
         type: "error",
@@ -235,7 +228,6 @@ export default function Signup() {
     let profileCreated = false;
 
     try {
-      // Create Firebase Authentication account
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email.trim(),
@@ -244,7 +236,6 @@ export default function Signup() {
 
       createdUser = userCredential.user;
 
-      // Upload selected image or default avatar
       const imageToUpload = profilePic || avatars[0].uri;
 
       const uploadedProfilePic = await UploadToCloudinary(imageToUpload);
@@ -253,7 +244,6 @@ export default function Signup() {
 
       const playerId = Math.floor(100000 + Math.random() * 900000);
 
-      // Save user profile in Firestore
       await setDoc(doc(firestore, "users", createdUser.uid), {
         uid: createdUser.uid,
         name: name.trim(),
@@ -277,7 +267,6 @@ export default function Signup() {
     } catch (error) {
       console.log("Signup error:", error);
 
-      // Remove incomplete Firebase account if profile was not saved
       if (createdUser && !profileCreated) {
         try {
           await deleteUser(createdUser);
@@ -311,7 +300,6 @@ export default function Signup() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     } catch (e) {
-      // haptics not available, ignore
     }
     HandleSignup();
   };

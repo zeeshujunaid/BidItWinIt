@@ -17,6 +17,7 @@ import Toast from "react-native-toast-message";
 import LeaveRoom from "./components/LeaveRoom";
 import Loader from "./components/Loader";
 import { useAuth } from "./context/Authcontext";
+import { serverNow, waitForServerTime } from "./Hooks/serverTime";
 import {
   initAuctionTimer,
   nextItem,
@@ -31,7 +32,6 @@ import {
 import { db } from "./utils/Firebase";
 import { useRoomPresence } from "./Hooks/useRoomPresence";
 import { useSaveCoins } from "./Hooks/useSaveCoins";
-import { serverNow } from "./Hooks/serverTime";
 import { useBlockBack } from "./Hooks/useBlockBack";
 
 const COLORS = {
@@ -55,8 +55,7 @@ export default function Game() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [currentTime, setCurrentTime] = useState(serverNow());
-
+const [currentTime, setCurrentTime] = useState(Date.now());
   const { user, loading: authLoading } = useAuth();
 
   // UI-only animation values
@@ -66,6 +65,26 @@ export default function Game() {
 
   useRoomPresence(roomId, user?.uid, { removeDisconnected: true });
   useSaveCoins(room, user);
+
+
+  useEffect(() => {
+    let active = true;
+
+    waitForServerTime().then(() => {
+      if (active) {
+        setCurrentTime(serverNow());
+      }
+    });
+
+    const interval = setInterval(() => {
+      setCurrentTime(serverNow());
+    }, 250);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     if (!room || !user?.uid) return;
@@ -269,14 +288,6 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [roomId, room?.status, room?.auctionStatus, room?.auctionEndsAt]);
 
-  // Update local countdown display
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(serverNow());
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // Automatically start next item after result
   useEffect(() => {

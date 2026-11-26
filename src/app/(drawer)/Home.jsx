@@ -277,7 +277,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
 
-  // Live activity strip
   activityCard: {
     flexDirection: "row",
     alignItems: "center",

@@ -2,11 +2,22 @@ import { ref, onValue } from "firebase/database";
 import { db } from "../utils/Firebase";
 
 let offset = 0;
+let initialized = false;
 
-// Ek baar listen karo, offset update hota rahega
-onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
-  offset = Number(snap.val()) || 0;
+let resolveServerTime;
+const serverTimeReady = new Promise((resolve) => {
+  resolveServerTime = resolve;
 });
 
-// Date.now() ki jagah ye use karo
+onValue(ref(db, ".info/serverTimeOffset"), (snapshot) => {
+  offset = Number(snapshot.val()) || 0;
+
+  if (!initialized) {
+    initialized = true;
+    resolveServerTime();
+  }
+});
+
+export const waitForServerTime = () => serverTimeReady;
+
 export const serverNow = () => Date.now() + offset;
